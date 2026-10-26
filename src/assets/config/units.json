@@ -1,0 +1,1284 @@
+{
+  "GUTTER_THUGS": {
+    "id": "GUTTER_THUGS",
+    "name": "Gutter Thugs",
+    "faction": "Sewer Rats",
+    "asset": "gutter_thug",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
+    "filtering": "linear",
+    "cost": 9,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": -0.05,
+      "criticalChance": 0,
+      "criticalModifier": 0,
+      "rangedSkill": 0,
+      "meleeSkill": 0,
+      "reloadSpeed": -0.05
+    },
+    "passive": {
+      "name": "Veterancy upgrades cost 15% less Force",
+      "type": "stat",
+      "stat": "veterancyForceCostMultiplier",
+      "mode": "multiplier",
+      "value": 0.85
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "sell_value",
+            "name": "Increase sell value 10%",
+            "effect": {
+              "type": "stat",
+              "stat": "sellBonus",
+              "mode": "percent",
+              "value": 0.1
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "xpPerKill",
+              "value": 1
+            }
+          },
+          {
+            "id": "first_hit",
+            "name": "First hit 15% damage",
+            "effect": {
+              "type": "special",
+              "property": "firstHitDamage",
+              "value": 0.15
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "melee_stun",
+            "name": "5% chance stun with melee weapon for 0.5 seconds",
+            "effect": {
+              "type": "special",
+              "property": "meleeStunChance",
+              "value": 0.05,
+              "duration": 500
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "status_duration",
+            "name": "Status effects last 7% longer",
+            "effect": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.07
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "refreshStatusChance",
+              "value": 0.1
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "armor_ignore",
+            "name": "10% chance to ignore 50% armor on hit",
+            "effect": {
+              "type": "special",
+              "property": "armorIgnoreChance",
+              "value": 0.1,
+              "amount": 0.5
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "sellBonus",
+              "mode": "percent",
+              "value": 0.25
+            }
+          },
+          {
+            "id": "unit_count_damage",
+            "name": "Gains 0.75% damage per unit on map",
+            "effect": {
+              "type": "special",
+              "property": "unitCountDamage",
+              "value": 0.0075
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "mode": "percent",
+              "value": 0.1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "ANARCHO_SABOTEURS": {
+    "id": "ANARCHO_SABOTEURS",
+    "name": "Anarcho Saboteurs",
+    "faction": "Sewer Rats",
+    "asset": "anarcho_saboteur",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
+    "filtering": "linear",
+    "cost": 30,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0,
+      "criticalChance": 0.1,
+      "criticalModifier": 0,
+      "rangedSkill": 0.15,
+      "meleeSkill": -0.1,
+      "reloadSpeed": 0
+    },
+    "passive": {
+      "name": "Crits apply the crit mod to fire dot",
+      "type": "special",
+      "property": "criticalFireDot"
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "double_fire_dot",
+            "name": "5% chance to double fire dot",
+            "effect": {
+              "type": "special",
+              "property": "doubleFireDotChance",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.15
+            }
+          },
+          {
+            "id": "first_hit",
+            "name": "First hit 15% damage",
+            "effect": {
+              "type": "special",
+              "property": "firstHitDamage",
+              "value": 0.15
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "nearby_damage",
+            "name": "Damage +2% per enemy within 3",
+            "effect": {
+              "type": "special",
+              "property": "nearbyEnemyDamage",
+              "value": 0.02,
+              "range": 3
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "range",
+              "value": 1
+            }
+          },
+          {
+            "id": "status_duration",
+            "name": "Status effects last 7% longer",
+            "effect": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.07
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "refreshStatusChance",
+              "value": 0.1
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "fire_slow",
+            "name": "Fire dot slows enemies 5%",
+            "effect": {
+              "type": "special",
+              "property": "fireDotSlow",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.25
+            }
+          },
+          {
+            "id": "spread_fire_dot",
+            "name": "Crits spread fire dot to nearby enemies (+0.3 range)",
+            "effect": {
+              "type": "special",
+              "property": "spreadFireDotOnCrit",
+              "range": 0.3
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalChance",
+              "value": 0.1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "SYNDICATE_FIXER": {
+    "id": "SYNDICATE_FIXER",
+    "name": "Syndicate Fixer",
+    "faction": "Sewer Rats",
+    "asset": "syndicate_fixer",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.4681,
+      "y": 0.9849
+    },
+    "filtering": "linear",
+    "cost": 25,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": -0.35,
+      "criticalChance": 0.15,
+      "criticalModifier": 1,
+      "rangedSkill": 0.2,
+      "meleeSkill": -0.05,
+      "reloadSpeed": 0.25
+    },
+    "passive": {
+      "name": "Killed enemies immediately end any ongoing effects",
+      "type": "special",
+      "property": "clearEffectsOnKill"
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "crit_chain",
+            "name": "Crits increase the chance of the next crit by 5%",
+            "effect": {
+              "type": "special",
+              "property": "nextCritChance",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "nextCritChance",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "first_hit",
+            "name": "First hit 15% damage",
+            "effect": {
+              "type": "special",
+              "property": "firstHitDamage",
+              "value": 0.15
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "mark_enemy",
+            "name": "5% chance to mark entering enemy: +25% damage for 15 seconds",
+            "effect": {
+              "type": "special",
+              "property": "markEnemyOnEnter",
+              "chance": 0.05,
+              "damageTaken": 0.25,
+              "duration": 15000
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "markedEnemyXpBonus",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "status_duration",
+            "name": "Status effects last 7% longer",
+            "effect": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.07
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "refreshStatusChance",
+              "value": 0.1
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "force_kill_bonus",
+            "name": "Attacked enemies that survive give +5% Force when killed",
+            "effect": {
+              "type": "special",
+              "property": "forceBonusForSurvivingTargets",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "forceBonusForSurvivingTargets",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "kill_reload",
+            "name": "When an enemy is killed +25% instant reload",
+            "effect": {
+              "type": "special",
+              "property": "killReload",
+              "value": 0.25
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "range",
+              "value": 1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "BELTER_PIRATE": {
+    "id": "BELTER_PIRATE",
+    "name": "Belter Pirate",
+    "faction": "Sewer Rats",
+    "asset": "belter_pirate",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.4924,
+      "y": 0.9872
+    },
+    "filtering": "linear",
+    "cost": 15,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0.05,
+      "criticalChance": 0.05,
+      "criticalModifier": 0.25,
+      "rangedSkill": 0,
+      "meleeSkill": 0,
+      "reloadSpeed": 0
+    },
+    "passive": {
+      "name": "15% damage bonus with 1 handed weapons",
+      "type": "special",
+      "property": "oneHandedDamage",
+      "value": 0.15
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "mixed_weapon_bonus",
+            "name": "Crit +5% when wielding ranged and melee weapons",
+            "effect": {
+              "type": "special",
+              "property": "mixedWeaponCritChance",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "veterancyForceCostMultiplier",
+              "mode": "multiplier",
+              "value": 0.9
+            }
+          },
+          {
+            "id": "first_hit",
+            "name": "First hit 15% damage",
+            "effect": {
+              "type": "special",
+              "property": "firstHitDamage",
+              "value": 0.15
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "kill_force_bonus",
+            "name": "Force +5% per unit killed",
+            "effect": {
+              "type": "special",
+              "property": "forceBonusPerUnitKill",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "status_duration",
+            "name": "Status effects last 7% longer",
+            "effect": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.07
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "refreshStatusChance",
+              "value": 0.1
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "bleed_melee",
+            "name": "10% chance to bleed on melee hit (10% current health over 5 seconds)",
+            "effect": {
+              "type": "special",
+              "property": "meleeBleedChance",
+              "value": 0.1,
+              "healthFraction": 0.1,
+              "duration": 5000
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "aoe_bonus",
+            "name": "AOE size and damage +5%",
+            "effect": {
+              "effects": [
+                {
+                  "type": "stat",
+                  "stat": "aoeRadius",
+                  "mode": "percent",
+                  "value": 0.05
+                },
+                {
+                  "type": "stat",
+                  "stat": "aoeDamageMultiplier",
+                  "mode": "percent",
+                  "value": 0.05
+                }
+              ]
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "alternateAttackBonus",
+              "value": 0.25
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "PALLID_ORDER_BLADE": {
+    "id": "PALLID_ORDER_BLADE",
+    "name": "Pallid Order Blade",
+    "faction": "Sewer Rats",
+    "asset": "pallid_order_blade",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.453,
+      "y": 0.9968
+    },
+    "filtering": "linear",
+    "cost": 35,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0.1,
+      "criticalChance": 0.15,
+      "criticalModifier": 0.75,
+      "rangedSkill": -0.35,
+      "meleeSkill": 0.15,
+      "reloadSpeed": -0.25
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "mode": "percent",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "empty_tier_1_path",
+            "name": "Empty workbook entry",
+            "unimplemented": true
+          },
+          {
+            "id": "first_hit",
+            "name": "First hit 15% damage",
+            "effect": {
+              "type": "special",
+              "property": "firstHitDamage",
+              "value": 0.15
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "status_duration",
+            "name": "Status effects last 7% longer",
+            "effect": {
+              "type": "stat",
+              "stat": "statusDuration",
+              "mode": "percent",
+              "value": 0.07
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "refreshStatusChance",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "empty_tier_2_path",
+            "name": "Empty workbook entry",
+            "unimplemented": true
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "empty_tier_3_path_a",
+            "name": "Empty workbook entry",
+            "unimplemented": true
+          },
+          {
+            "id": "empty_tier_3_path_b",
+            "name": "Empty workbook entry",
+            "unimplemented": true
+          }
+        ]
+      }
+    ]
+  },
+  "ASHIGARU": {
+    "id": "ASHIGARU",
+    "name": "Ashigaru",
+    "faction": "Laisung Collective",
+    "asset": "Ashigaru",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
+    "filtering": "linear",
+    "cost": 15,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0,
+      "criticalChance": 0.05,
+      "criticalModifier": 0.15,
+      "rangedSkill": 0.1,
+      "meleeSkill": 0,
+      "reloadSpeed": 0
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.05,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "adjacent_reload",
+            "name": "Reload speed +7.5% per adjacent Ashigaru (max 2)",
+            "effect": {
+              "type": "special",
+              "property": "adjacentAshigaruReload",
+              "value": 0.075,
+              "max": 2
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "faction_chance",
+            "name": "Chance based abilities +2.5%",
+            "effect": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath",
+              "value": null
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax",
+              "value": null
+            }
+          },
+          {
+            "id": "reload_damage",
+            "name": "8.5% damage bonus after reload for 1.5 seconds",
+            "effect": {
+              "type": "special",
+              "property": "postReloadDamage",
+              "value": 0.085,
+              "duration": 1500
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          },
+          {
+            "id": "utility_bonus",
+            "name": "Utility equipment stats +5%",
+            "effect": {
+              "type": "special",
+              "property": "utilityBonusMultiplier",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "repeatCritChance",
+              "value": 0.02,
+              "max": 0.2
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "force_kill",
+            "name": "Force per kill +1",
+            "effect": {
+              "type": "special",
+              "property": "forceFlatPerKill",
+              "value": 1
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "forceFlatPerKill",
+              "value": 2
+            }
+          },
+          {
+            "id": "slow_hit",
+            "name": "5% chance to slow (35% for 5 seconds) on hit",
+            "effect": {
+              "type": "special",
+              "property": "slowChance",
+              "value": 0.05,
+              "factor": 0.65,
+              "duration": 5000
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalChance",
+              "value": 0.1
+            }
+          }
+        ]
+      }
+    ],
+    "passive": {
+      "name": "15% chance to apply Exposed (20%) on hit",
+      "type": "special",
+      "property": "exposeChance",
+      "value": 0.15,
+      "damageTaken": 0.2,
+      "duration": 5000
+    },
+    "weaponRestrictions": [
+      "heavy"
+    ]
+  },
+  "INFILTRATOR": {
+    "id": "INFILTRATOR",
+    "name": "Infiltrator",
+    "faction": "Laisung Collective",
+    "asset": "anarcho_saboteur",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
+    "filtering": "linear",
+    "cost": 28,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0.05,
+      "criticalChance": 0,
+      "criticalModifier": 1,
+      "rangedSkill": 0.05,
+      "meleeSkill": 0,
+      "reloadSpeed": 0.05
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.05,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "faction_chance",
+            "name": "Chance based abilities +2.5%",
+            "effect": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath",
+              "value": null
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax",
+              "value": null
+            }
+          },
+          {
+            "id": "utility_bonus",
+            "name": "Utility equipment stats +5%",
+            "effect": {
+              "type": "special",
+              "property": "utilityBonusMultiplier",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "repeatCritChance",
+              "value": 0.02,
+              "max": 0.2
+            }
+          }
+        ]
+      }
+    ],
+    "weaponRestrictions": [
+      "heavy",
+      "explosion"
+    ]
+  },
+  "SHINOBI": {
+    "id": "SHINOBI",
+    "name": "Shinobi",
+    "faction": "Laisung Collective",
+    "asset": "Shinobi",
+    "characterArt": true,
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
+    "filtering": "linear",
+    "cost": 40,
+    "baseStats": {
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0.25,
+      "criticalChance": 0.1,
+      "criticalModifier": 0.5,
+      "rangedSkill": -0.05,
+      "meleeSkill": 0.05,
+      "reloadSpeed": -0.1
+    },
+    "pathTiers": [
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.05,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "crit_pen",
+            "name": "On crit next attack +12.5% penetration",
+            "effect": {
+              "type": "special",
+              "property": "nextAttackPenetration",
+              "value": 0.125
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25
+            }
+          },
+          {
+            "id": "faction_chance",
+            "name": "Chance based abilities +2.5%",
+            "effect": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath",
+              "value": null
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax",
+              "value": null
+            }
+          },
+          {
+            "id": "bleed",
+            "name": "Bleed on hit +15% chance",
+            "effect": {
+              "type": "special",
+              "property": "bleedChance",
+              "value": 0.15,
+              "healthFraction": 0.1,
+              "duration": 5000
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "bleedDurationBonus",
+              "value": 2000
+            }
+          },
+          {
+            "id": "utility_bonus",
+            "name": "Utility equipment stats +5%",
+            "effect": {
+              "type": "special",
+              "property": "utilityBonusMultiplier",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "repeatCritChance",
+              "value": 0.02,
+              "max": 0.2
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "crit_bonus",
+            "name": "Critical chance +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "criticalChance",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "freeAttackOnKill",
+              "value": null,
+              "cooldown": 2000
+            }
+          },
+          {
+            "id": "attack_speed",
+            "name": "Attack speed +10%",
+            "effect": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "value": 0.1,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          }
+        ]
+      }
+    ],
+    "passive": {
+      "name": "Crits grant +20% damage and -10% attack speed for 5 seconds",
+      "type": "special",
+      "property": "critDamageBoost",
+      "value": 0.2,
+      "attackSpeedPenalty": -0.1,
+      "duration": 5000
+    },
+    "weaponRestrictions": [
+      "firearms"
+    ]
+  }
+}

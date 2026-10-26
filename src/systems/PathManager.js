@@ -1,0 +1,148 @@
+import Phaser from 'phaser';
+
+export default class PathManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.path = [];
+  }
+
+  /**
+   * Set the path for enemies to follow
+   * @param {Array} points - Array of {x, y} coordinates
+   */
+  setPath(points) {
+    this.path = points;
+  }
+
+  /**
+   * Get the full path
+   * @returns {Array} Array of path points
+   */
+  getPath() {
+    return this.path;
+  }
+
+  /**
+   * Get the starting point of the path
+   * @returns {Object} {x, y} coordinates
+   */
+  getStartPoint() {
+    return this.path[0];
+  }
+
+  /**
+   * Get the end point of the path
+   * @returns {Object} {x, y} coordinates
+   */
+  getEndPoint() {
+    return this.path[this.path.length - 1];
+  }
+
+  /**
+   * Calculate the distance along the path
+   * @param {number} index - Index of the current path segment
+   * @param {number} t - Normalized position along the current segment (0-1)
+   * @returns {number} Total distance along the path
+   */
+  getDistanceAlongPath(index, t) {
+    let distance = 0;
+
+    // Add up distances of completed segments
+    for (let i = 0; i < index; i++) {
+      distance += Phaser.Math.Distance.Between(
+        this.path[i].x,
+        this.path[i].y,
+        this.path[i + 1].x,
+        this.path[i + 1].y
+      );
+    }
+
+    // Add partial distance along current segment
+    if (index < this.path.length - 1) {
+      const segmentLength = Phaser.Math.Distance.Between(
+        this.path[index].x,
+        this.path[index].y,
+        this.path[index + 1].x,
+        this.path[index + 1].y
+      );
+      distance += segmentLength * t;
+    }
+
+    return distance;
+  }
+
+  /**
+   * Get the total length of the path
+   * @returns {number} Total path length
+   */
+  getTotalPathLength() {
+    let length = 0;
+    for (let i = 0; i < this.path.length - 1; i++) {
+      length += Phaser.Math.Distance.Between(
+        this.path[i].x,
+        this.path[i].y,
+        this.path[i + 1].x,
+        this.path[i + 1].y
+      );
+    }
+    return length;
+  }
+
+  /**
+   * Get position at a specific distance along the path
+   * @param {number} distance - Distance along the path
+   * @returns {Object} {x, y, angle} position and angle
+   */
+  getPositionAtDistance(distance) {
+    let currentDistance = 0;
+    let remainingDistance = distance;
+
+    // Find the appropriate path segment
+    for (let i = 0; i < this.path.length - 1; i++) {
+      const segmentLength = Phaser.Math.Distance.Between(
+        this.path[i].x,
+        this.path[i].y,
+        this.path[i + 1].x,
+        this.path[i + 1].y
+      );
+
+      if (currentDistance + segmentLength >= distance) {
+        // This is the segment we want
+        const t = remainingDistance / segmentLength;
+
+        // Calculate position
+        const x = Phaser.Math.Linear(this.path[i].x, this.path[i + 1].x, t);
+        const y = Phaser.Math.Linear(this.path[i].y, this.path[i + 1].y, t);
+
+        // Calculate angle
+        const angle = Phaser.Math.Angle.Between(
+          this.path[i].x,
+          this.path[i].y,
+          this.path[i + 1].x,
+          this.path[i + 1].y
+        );
+
+        return { x, y, angle };
+      }
+
+      currentDistance += segmentLength;
+      remainingDistance -= segmentLength;
+    }
+
+    // If we've gone beyond the path, return the end point
+    const lastPoint = this.path[this.path.length - 1];
+    const secondLastPoint = this.path[this.path.length - 2];
+    const angle = Phaser.Math.Angle.Between(
+      secondLastPoint.x,
+      secondLastPoint.y,
+      lastPoint.x,
+      lastPoint.y
+    );
+
+    return {
+      x: lastPoint.x,
+      y: lastPoint.y,
+      angle: angle,
+    };
+  }
+}

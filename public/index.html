@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sci-Fi Tower Defense RPG</title>
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: url('assets/images/scify.png') no-repeat center center fixed;
+            background-size: cover;
+            overflow: hidden;
+            transition: background-image 0.7s cubic-bezier(0.4,0,0.2,1);
+        }
+        body.in-game-bg {
+            background: url('assets/images/forest.png') no-repeat center center fixed;
+            background-size: cover;
+        }
+        body.desert-bg {
+            background: url('assets/images/desert.png') no-repeat center center fixed;
+            background-size: cover;
+        }
+        body.mountain-bg {
+            background: url('assets/images/mountain.png') no-repeat center center fixed;
+            background-size: cover;
+        }
+        #game-container {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <script>
+      // Listen for custom events to change background
+      window.setGameBackground = function(mapKey) {
+        document.body.classList.remove('in-game-bg', 'desert-bg', 'mountain-bg');
+        if(mapKey === 'forest') {
+          document.body.classList.add('in-game-bg');
+        } else if(mapKey === 'desert') {
+          document.body.classList.add('desert-bg');
+        } else if(mapKey === 'mountain') {
+          document.body.classList.add('mountain-bg');
+        }
+      }
+      // Reset to intro background
+      window.setIntroBackground = function() {
+        document.body.classList.remove('in-game-bg', 'desert-bg', 'mountain-bg');
+      }
+    </script>
+</body>
+</html>

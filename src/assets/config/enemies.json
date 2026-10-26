@@ -1,0 +1,7 @@
+{
+  "NORMAL": { "name": "Normal", "asset": "basic", "visualSize": { "width": 64, "height": 64 }, "visualOrigin": { "x": 0.5, "y": 0.9746 }, "filtering": "linear", "health": 100, "tilesPerSecond": 1, "force": 2, "armor": 0 },
+  "FAST": { "name": "Fast", "asset": "fast", "visualSize": { "width": 64, "height": 64 }, "visualOrigin": { "x": 0.5, "y": 0.9004 }, "filtering": "linear", "health": 75, "tilesPerSecond": 2, "force": 4, "armor": 0 },
+  "ARMORED": { "name": "Armored", "asset": "armored", "visualSize": { "width": 64, "height": 64 }, "visualOrigin": { "x": 0.5, "y": 1 }, "filtering": "linear", "health": 200, "tilesPerSecond": 0.75, "force": 10, "armor": 25 },
+  "ELITE": { "name": "Elite", "asset": "elite", "visualSize": { "width": 96, "height": 96 }, "visualOrigin": { "x": 0.5, "y": 0.9766 }, "filtering": "linear", "health": 500, "tilesPerSecond": 1, "force": 20, "armor": 20 },
+  "BOSS": { "name": "Boss", "asset": "boss", "visualSize": { "width": 128, "height": 128 }, "visualOrigin": { "x": 0.5, "y": 0.9107 }, "filtering": "linear", "health": 10000, "tilesPerSecond": 0.75, "force": 400, "armor": 20 }
+}

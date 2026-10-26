@@ -1,0 +1,386 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import RPGManager from '../src/systems/RPGManager.js';
+import TowerManager from '../src/systems/TowerManager.js';
+
+function createRpgFixture() {
+  const manager = Object.create(RPGManager.prototype);
+  manager.units = { UNIT: { id: 'UNIT', cost: 10 } };
+  manager.equipment = {
+    items: {
+      sidearm: { id: 'sidearm', type: 'weapon', hands: 1 },
+      pistol: { id: 'pistol', type: 'weapon', hands: 1 },
+      rifle: { id: 'rifle', type: 'weapon', hands: 2 },
+      gear: { id: 'gear', type: 'utility' },
+      makeshift: { id: 'makeshift', type: 'weapon', rarity: 'MAKESHIFT', hands: 2 },
+    },
+    augments: { sample: { id: 'sample', cost: 100 } },
+  };
+  manager.state = {
+    units: {
+      UNIT: {
+        id: 'UNIT',
+        rank: 1,
+        copies: 1,
+        equipped: { left: 'sidearm', right: null, utility: 'gear' },
+        augments: [],
+      },
+    },
+    inventory: [
+      { itemId: 'sidearm' },
+      { itemId: 'rifle' },
+      { itemId: 'gear' },
+    ],
+  };
+  manager.saveCount = 0;
+  manager.save = () => { manager.saveCount += 1; };
+  manager.scene = { registry: { set() {} } };
+  return manager;
+}
+
+function createDeploymentFixture(force = 10) {
+  const rpgManager = createRpgFixture();
+  const persistentBefore = JSON.parse(JSON.stringify(rpgManager.state));
+  let forceSpendCalls = 0;
+  let towerCreateCalls = 0;
+  const group = {
+    children: [],
+    add(tower) { this.children.push(tower); },
+    remove(tower) { this.children = this.children.filter(item => item !== tower); },
+    getChildren() { return this.children; },
+    clear() { this.children = []; },
+  };
+  const scene = {
+    add: { group: () => group },
+    rpgManager,
+    registry: { get: key => key === 'missionRoster' ? ['UNIT'] : null },
+    mapManager: { getCurrentMap: () => ({ tileSize: 64 }) },
+    pathTileKeys: new Set(),
+    economyManager: {
+      force,
+      getForce() { return this.force; },
+      spendForce(amount) {
+        forceSpendCalls += 1;
+        if (this.force < amount) return false;
+        this.force -= amount;
+        return true;
+      },
+    },
+  };
+  rpgManager.createDeploymentProgression = (unitId, source = {}) => ({
+    veterancy: 1,
+    experience: 0,
+    xp: 0,
+    selectedPaths: {},
+    pathProgress: {},
+    pathTierSelection: {},
+    ...source,
+  });
+  rpgManager.getEffectiveStats = (unitId, progression) => ({
+    unitId,
+    veterancy: progression.veterancy,
+    experience: progression.experience,
+    equipment: { weapons: [], utility: null },
+  });
+  const manager = new TowerManager(scene);
+  manager.createTower = (unitId, tile, towerData, deploymentCost) => {
+    towerCreateCalls += 1;
+    return {
+      unitId,
+      tile,
+      towerData,
+      deploymentCost,
+      destroyed: false,
+      destroy() { this.destroyed = true; },
+    };
+  };
+  const makeTile = () => ({
+    x: 64,
+    y: 64,
+    gridPosition: { x: 1, y: 1 },
+    hasTower: false,
+    setAlpha() {},
+  });
+  return {
+    manager,
+    scene,
+    rpgManager,
+    persistentBefore,
+    makeTile,
+    getForceSpendCalls: () => forceSpendCalls,
+    getTowerCreateCalls: () => towerCreateCalls,
+    group,
+  };
+}
+
+test('equip is atomic and a two-handed weapon occupies both hand slots', () => {
+  const manager = createRpgFixture();
+  const owned = manager.getOwnedUnit('UNIT');
+  assert.equal(manager.equip('UNIT', 'rifle', 'left'), true);
+  assert.deepEqual(owned.equipped, { left: 'rifle', right: 'rifle', utility: 'gear' });
+
+  const beforeInvalidEquip = JSON.parse(JSON.stringify(owned.equipped));
+  const savesBeforeInvalidEquip = manager.saveCount;
+  assert.equal(manager.equip('UNIT', 'sidearm', 'utility'), false);
+  assert.equal(manager.equip('UNIT', 'sidearm', 'invalid'), false);
+  assert.deepEqual(owned.equipped, beforeInvalidEquip);
+  assert.equal(manager.saveCount, savesBeforeInvalidEquip);
+});
+
+test('mission roster selection is mission-only and rejects unknown or unowned units', () => {
+  const manager = createRpgFixture();
+  const roster = [];
+  manager.scene.registry.set = (key, value) => {
+    if (key === 'missionRoster') roster.splice(0, roster.length, ...value);
+  };
+  const persistentBefore = JSON.parse(JSON.stringify(manager.state));
+  assert.equal(manager.setMissionRoster(['UNIT', 'UNIT']), true);
+  assert.deepEqual(roster, ['UNIT']);
+  assert.deepEqual(manager.state, persistentBefore);
+  assert.equal(manager.setMissionRoster(['MISSING']), false);
+  assert.equal(manager.setMissionRoster([]), false);
+  assert.deepEqual(roster, ['UNIT']);
+  assert.deepEqual(manager.state, persistentBefore);
+});
+
+test('insufficient Force leaves the tile, deployment state, and roster unchanged', () => {
+  const fixture = createDeploymentFixture(9.99);
+  const tile = fixture.makeTile();
+  assert.equal(fixture.manager.deployUnit('UNIT', tile), false);
+  assert.equal(fixture.scene.economyManager.force, 9.99);
+  assert.equal(fixture.getForceSpendCalls(), 0);
+  assert.equal(fixture.getTowerCreateCalls(), 0);
+  assert.equal(tile.hasTower, false);
+  assert.equal(fixture.group.children.length, 0);
+  assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+});
+
+test('successful deployments deduct the configured Force cost once per deployment', () => {
+  const fixture = createDeploymentFixture(30);
+  const firstTile = fixture.makeTile();
+  const secondTile = fixture.makeTile();
+  assert.equal(fixture.manager.deployUnit('UNIT', firstTile), true);
+  assert.equal(fixture.manager.deployUnit('UNIT', secondTile), true);
+  assert.equal(fixture.scene.economyManager.force, 0);
+  assert.equal(fixture.group.children[0].deploymentCost, 15);
+  assert.equal(fixture.getForceSpendCalls(), 2);
+  assert.equal(fixture.group.children.length, 2);
+  assert.equal(firstTile.hasTower, true);
+  assert.equal(secondTile.hasTower, true);
+  assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+});
+
+test('duplicate unit deployments preserve separate loadouts through tower creation', () => {
+  const fixture = createDeploymentFixture(50);
+  const first = { deploymentId: 'first', unitId: 'UNIT', equipped: { left: 'sidearm', right: null, utility: null }, equipment: { weapons: [fixture.rpgManager.getItemDefinition('sidearm'), null], utility: null }, augments: [] };
+  const second = { deploymentId: 'second', unitId: 'UNIT', equipped: { left: 'rifle', right: 'rifle', utility: 'gear' }, equipment: { weapons: [fixture.rpgManager.getItemDefinition('rifle'), fixture.rpgManager.getItemDefinition('rifle')], utility: fixture.rpgManager.getItemDefinition('gear') }, augments: [] };
+  fixture.scene.registry.get = key => key === 'missionRoster' ? [first, second] : key === 'selectedUnit' ? 'first' : null;
+  let received;
+  fixture.rpgManager.getEffectiveStats = (id, progression) => { received = progression; return { unitId: id, equipment: progression.equipment }; };
+  const one = fixture.manager.deployUnit('UNIT', fixture.makeTile());
+  assert.equal(one, true);
+  assert.deepEqual(received.equipped, first.equipped);
+  assert.equal(received.equipment.weapons[0].id, 'sidearm');
+  fixture.scene.registry.get = key => key === 'missionRoster' ? [first, second] : key === 'selectedUnit' ? 'second' : null;
+  const two = fixture.manager.deployUnit('UNIT', fixture.makeTile());
+  assert.equal(two, true);
+  assert.deepEqual(received.equipped, second.equipped);
+  assert.equal(received.equipment.utility.id, 'gear');
+  assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+});
+
+test('a rejected Force spend creates no deployed or tile state', () => {
+  const fixture = createDeploymentFixture(15);
+  fixture.scene.economyManager.spendForce = () => false;
+  const tile = fixture.makeTile();
+  assert.equal(fixture.manager.deployUnit('UNIT', tile), false);
+  assert.equal(fixture.getTowerCreateCalls(), 1);
+  assert.equal(fixture.group.children.length, 0);
+  assert.equal(tile.hasTower, false);
+  assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+});
+
+function assertDeploymentCost(manager, expected) {
+  const actual = manager.getDeploymentForceCost('UNIT');
+  assert.ok(Math.abs(actual - expected) < 1e-10, `expected ${expected}, got ${actual}`);
+}
+
+test('deployment Force cost preserves the base unit cost with no equipment', () => {
+  const manager = createRpgFixture();
+  manager.getOwnedUnit('UNIT').equipped = { left: null, right: null, utility: null };
+  const persistentBefore = JSON.parse(JSON.stringify(manager.state));
+  assertDeploymentCost(manager, 10);
+  assert.deepEqual(manager.state, persistentBefore);
+});
+
+test('one-handed weapons add at least 4 Force and scale above the minimum', () => {
+  const manager = createRpgFixture();
+  const owned = manager.getOwnedUnit('UNIT');
+  manager.equipment.items.sidearm.cost = 10;
+  owned.equipped = { left: 'sidearm', right: null, utility: null };
+  assertDeploymentCost(manager, 14);
+
+  manager.equipment.items.sidearm.cost = 40;
+  assertDeploymentCost(manager, 10 + (40 / 4.2));
+});
+
+test('two-handed weapons add at least 8 Force and count once across both slots', () => {
+  const manager = createRpgFixture();
+  const owned = manager.getOwnedUnit('UNIT');
+  manager.equipment.items.rifle.cost = 10;
+  owned.equipped = { left: 'rifle', right: 'rifle', utility: null };
+  assertDeploymentCost(manager, 18);
+
+  manager.equipment.items.rifle.cost = 40;
+  assertDeploymentCost(manager, 10 + (40 / 4.2));
+});
+
+test('two separate one-handed weapons each add their own Force increase', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.sidearm.cost = 10;
+  manager.equipment.items.pistol.cost = 40;
+  manager.getOwnedUnit('UNIT').equipped = {
+    left: 'sidearm', right: 'pistol', utility: null,
+  };
+  assertDeploymentCost(manager, 10 + 4 + (40 / 4.2));
+});
+
+test('utility equipment adds at least 1 Force and scales above the minimum', () => {
+  const manager = createRpgFixture();
+  manager.getOwnedUnit('UNIT').equipped = { left: null, right: null, utility: 'gear' };
+  manager.equipment.items.gear.cost = 4;
+  assertDeploymentCost(manager, 11);
+
+  manager.equipment.items.gear.cost = 16.8;
+  assertDeploymentCost(manager, 12);
+});
+
+test('augments without an explicit Force modifier add nothing', () => {
+  const manager = createRpgFixture();
+  manager.getOwnedUnit('UNIT').equipped = { left: null, right: null, utility: null };
+  manager.getOwnedUnit('UNIT').augments = ['sample'];
+  assertDeploymentCost(manager, 10);
+});
+
+test('free makeshift weapons still use the applicable minimum increase', () => {
+  const manager = createRpgFixture();
+  manager.getOwnedUnit('UNIT').equipped = {
+    left: 'makeshift', right: 'makeshift', utility: null,
+  };
+  assertDeploymentCost(manager, 18);
+});
+
+test('deployment Force cost combines unit, weapon, utility, and no-default augment premium', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.sidearm.cost = 40;
+  manager.equipment.items.gear.cost = 16.8;
+  manager.getOwnedUnit('UNIT').equipped = {
+    left: 'sidearm', right: null, utility: 'gear',
+  };
+  manager.getOwnedUnit('UNIT').augments = ['sample'];
+  assertDeploymentCost(manager, 10 + (40 / 4.2) + 2);
+});
+
+test('equipment purchases spend credits once and add equipment to persistent inventory', () => {
+  const manager = createRpgFixture();
+  manager.state.credits = 50;
+  manager.equipment.items.sidearm.cost = 30;
+  assert.equal(manager.purchaseEquipment('sidearm'), false); // Already owned.
+  manager.equipment.items.new_item = { id: 'new_item', name: 'New item', type: 'weapon', hands: 1, cost: 30 };
+  assert.equal(manager.purchaseEquipment('new_item'), true);
+  assert.equal(manager.state.credits, 20);
+  assert.equal(manager.getItemInstance('new_item').itemId, 'new_item');
+  assert.equal(manager.purchaseEquipment('new_item'), false);
+});
+
+test('equipment purchases reject insufficient credits and unpriced equipment', () => {
+  const manager = createRpgFixture();
+  manager.state.credits = 5;
+  manager.equipment.items.costly = { id: 'costly', type: 'weapon', hands: 2, cost: 20 };
+  manager.equipment.items.unpriced = { id: 'unpriced', type: 'weapon', hands: 1 };
+  assert.equal(manager.purchaseEquipment('costly'), false);
+  assert.equal(manager.purchaseEquipment('unpriced'), false);
+  assert.equal(manager.state.credits, 5);
+  assert.equal(manager.getItemInstance('costly'), undefined);
+});
+
+test('mission roster selection and deselection leaves persistent ownership untouched', () => {
+  const manager = createRpgFixture();
+  const roster = [];
+  manager.scene.registry.set = (key, value) => { if (key === 'missionRoster') roster.splice(0, roster.length, ...value); };
+  const before = JSON.parse(JSON.stringify(manager.state));
+  assert.equal(manager.setMissionRoster(['UNIT']), true);
+  assert.deepEqual(roster, ['UNIT']);
+  assert.equal(manager.setMissionRoster([]), false);
+  assert.deepEqual(manager.state, before);
+});
+
+test('equip rejects equipment that is defined but not owned', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.unowned = { id: 'unowned', type: 'weapon', hands: 1 };
+  const before = JSON.parse(JSON.stringify(manager.getOwnedUnit('UNIT').equipped));
+  assert.equal(manager.equip('UNIT', 'unowned', 'left'), false);
+  assert.deepEqual(manager.getOwnedUnit('UNIT').equipped, before);
+});
+
+test('Makeshift equipment is equipable and permanently available without inventory ownership', () => {
+  const manager = createRpgFixture();
+  assert.equal(manager.getItemInstance('makeshift'), undefined);
+  assert.equal(manager.getOwnedItems('weapon').some(({ definition }) => definition.id === 'makeshift'), true);
+  assert.equal(manager.getEquipmentCreditCost('makeshift'), null);
+  assert.equal(manager.purchaseEquipment('makeshift'), false);
+  assert.equal(manager.equip('UNIT', 'makeshift', 'left'), true);
+  assert.deepEqual(manager.getOwnedUnit('UNIT').equipped, { left: 'makeshift', right: 'makeshift', utility: 'gear' });
+  assert.equal(manager.getItemInstance('makeshift'), undefined);
+  assert.equal(manager.state.inventory.some(item => item.itemId === 'makeshift'), false);
+});
+
+test('recruiting a unit keeps its makeshift starter loadout out of persistent inventory', () => {
+  const manager = createRpgFixture();
+  delete manager.state.units.UNIT;
+  assert.equal(manager.addUnitCopy('UNIT'), true);
+  assert.deepEqual(manager.getOwnedUnit('UNIT').equipped, { left: 'makeshift', right: 'makeshift', utility: null });
+  assert.equal(manager.state.inventory.some(item => item.itemId === 'makeshift'), false);
+});
+
+test('purchased equipment and loadout persist when RPG screens are reopened', () => {
+  const manager = createRpgFixture();
+  manager.state.credits = 100;
+  manager.equipment.items.purchase = { id: 'purchase', type: 'weapon', hands: 1, cost: 25 };
+  let persisted;
+  manager.save = () => { persisted = JSON.parse(JSON.stringify(manager.state)); };
+  assert.equal(manager.purchaseEquipment('purchase'), true);
+  assert.equal(manager.equip('UNIT', 'purchase', 'right'), true);
+  const reopened = createRpgFixture();
+  reopened.equipment.items.purchase = manager.equipment.items.purchase;
+  reopened.state = persisted;
+  assert.equal(reopened.getItemInstance('purchase').itemId, 'purchase');
+  assert.equal(reopened.getOwnedUnit('UNIT').equipped.right, 'purchase');
+  assert.equal(reopened.state.credits, 75);
+});
+
+test('deployment authority rejects path tiles even when called outside the scene click handler', () => {
+  const fixture = createDeploymentFixture(20);
+  fixture.scene.pathTileKeys.add('1,1');
+  const tile = fixture.makeTile();
+  assert.equal(fixture.manager.deployUnit('UNIT', tile), false);
+  assert.equal(fixture.getForceSpendCalls(), 0);
+  assert.equal(fixture.getTowerCreateCalls(), 0);
+  assert.equal(tile.hasTower, false);
+});
+
+test('deployment authority rejects tiles inside an unclearable building footprint', () => {
+  const fixture = createDeploymentFixture(30);
+  fixture.scene.mapManager.getCurrentMap = () => ({
+    tileSize: 64,
+    placementRestrictions: [{ x: 1, y: 1, width: 2, height: 3 }],
+  });
+  for (let x = 1; x < 3; x += 1) for (let y = 1; y < 4; y += 1) {
+    const tile = fixture.makeTile();
+    tile.gridPosition = { x, y };
+    assert.equal(fixture.manager.deployUnit('UNIT', tile), false);
+    assert.equal(tile.hasTower, false);
+  }
+  assert.equal(fixture.getForceSpendCalls(), 0);
+  assert.equal(fixture.getTowerCreateCalls(), 0);
+});
