@@ -6,6 +6,7 @@
 # Build outputs
 /dist
 /build
+/release
 
 # Development
 .DS_Store
