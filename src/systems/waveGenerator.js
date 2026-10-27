@@ -53,11 +53,12 @@ function groupedComposition(count, weights, random, onlyType = null) {
   return [...typeCounts].map(([type, amount]) => ({ type, count: amount }));
 }
 
-export function generateMissionWaves({ difficulty, enemies, random = Math.random }) {
+export function generateMissionWaves({ difficulty, enemies, random = Math.random, totalWaves: fixedTotalWaves = null }) {
   const range = DIFFICULTY_WAVE_RANGES[difficulty];
   if (!range) throw new Error(`Unknown mission difficulty: ${difficulty}`);
   const [minimum, maximum] = range;
-  const totalWaves = minimum + Math.floor(random() * (maximum - minimum + 1));
+  const totalWaves = Number.isInteger(fixedTotalWaves) && fixedTotalWaves > 0
+    ? fixedTotalWaves : minimum + Math.floor(random() * (maximum - minimum + 1));
   const availableTypes = Object.keys(enemies).filter(type => type !== 'BOSS');
   let rawEnemyCount = 30;
   let bossChance = 10;

@@ -58,6 +58,7 @@ export function settleMissionState(state, {
   difficulty,
   unitIds = [],
   missionFaction = null,
+  rewardMultiplier = 1,
   units,
   equipment,
   addUnitCopy,
@@ -98,18 +99,23 @@ export function settleMissionState(state, {
   if (victory) {
     const reward = VICTORY_REWARDS[difficulty];
     if (reward) {
-      state.credits += reward.credits;
-      result.credits = reward.credits;
+      const multiplier = Math.max(0, Number(rewardMultiplier) || 1);
+      const credits = reward.credits * multiplier;
+      const influence = reward.influence * multiplier;
+      state.credits += credits;
+      result.credits = credits;
       if (missionFaction) {
-        state.influence[missionFaction] = (Number(state.influence[missionFaction]) || 0) + reward.influence;
+        state.influence[missionFaction] = (Number(state.influence[missionFaction]) || 0) + influence;
+        state.totalInfluence ||= {};
+        state.totalInfluence[missionFaction] = (Number(state.totalInfluence[missionFaction]) || 0) + influence;
         result.faction = missionFaction;
-        result.influence = reward.influence;
+        result.influence = influence;
       }
     }
 
     if (random() < (EQUIPMENT_DROP_CHANCE[difficulty] || 0)) {
       const lootPool = Object.values({ ...equipment.items, ...equipment.augments })
-        .filter(item => item.rarity !== 'MAKESHIFT');
+        .filter(item => item.rarity !== 'MAKESHIFT' && !item.faction);
       const item = pickItemByRarity(lootPool, random);
       if (item) {
         state.inventory.push({ itemId: item.id, durability: null });

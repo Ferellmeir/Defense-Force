@@ -1,288 +1,144 @@
 import Phaser from 'phaser';
 import { fmt } from '../utils/formatNumber.js';
-import MapManager from '../systems/MapManager.js';
 import RPGManager from '../systems/RPGManager.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
 import { preloadUiAssets } from '../helpers/uiAssets.js';
+import { FACTIONS, displayFactionName } from '../utils/factions.js';
+import { MISSION_TYPE_NAMES } from '../systems/missionBoard.js';
+import { getFactionEnvironment } from '../systems/missionEnvironments.js';
+import { getMissionCardBounds, getMissionGridLayout } from '../systems/missionScreenLayout.js';
+
+const COLORS = { gold: '#ffe27a', pale: '#d8e6ef', muted: '#91a4b5' };
+const DIFFICULTY_NAMES = { EASY: '1', NORMAL: '2', HARD: '3', EXPERT: '4', INSANE: '5' };
 
 export default class MapSelectScene extends Phaser.Scene {
-  constructor() {
-    super('MapSelectScene');
-    this.MAP_KEYS = ['forest', 'desert', 'mountain'];
-    this.DIFFICULTY_KEYS = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'INSANE'];
-    this.selectedDifficulty = 'EASY'; // Default difficulty
-  }
+  constructor() { super('MapSelectScene'); }
 
-  preload() {
-    preloadUiAssets(this);
-    // Preload map JSONs for preview
-    this.mapManager = new MapManager(this);
-    this.mapManager.preloadMaps(this.MAP_KEYS);
-  }
+  preload() { preloadUiAssets(this); }
 
   create() {
-    // Stop global background music if playing when entering map select/home
-    import('../systems/AudioManager.js').then(({ default: AudioManager }) => {
-      AudioManager.stopGlobalMusic(this, 'bgm');
-    });
-
-    this.mapManager.createMaps(this.MAP_KEYS);
+    import('../systems/AudioManager.js').then(({ default: AudioManager }) => AudioManager.stopGlobalMusic(this, 'bgm'));
     this.rpgManager = new RPGManager(this);
-    this.registry.set('selectedUnit', null);
-
-    // Set intro background when entering map select
-    if (window.setIntroBackground) window.setIntroBackground();
-
-    // Game title and mission briefing
-    this.add
-      .text(640, 55, 'SCI-FI TOWER DEFENSE RPG', {
-        fontSize: '48px',
-        fill: '#fff',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(320, 125, 'MISSION BRIEFING', {
-        fontSize: '17px',
-        fill: '#ffe27a',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
-    this.add
-      .text(320, 165,
-        'Defend the protected zone from enemy waves on procedurally generated, winding routes. Deploy your owned units on eligible tiles beside the path; prepare their weapons and equipment, then use their roles, targeting, and tile effects to build your defense. Win missions to earn credits, faction influence, and possible equipment or unit rewards for future deployments.',
-        {
-          fontSize: '15px',
-          fill: '#fff',
-          align: 'center',
-          wordWrap: { width: 590 },
-          lineSpacing: 3,
-        })
-      .setOrigin(0.5);
-
-    this.add
-      .text(320, 230, 'Select a Mission Map', {
-        fontSize: '22px',
-        fill: '#fff',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
-    // Map selection
-    const mapStartY = 270;
-    const mapSpacing = 65;
-    this.mapButtons = [];
-
-    this.MAP_KEYS.forEach((key, idx) => {
-      const mapData = this.mapManager.getMap(key);
-      const y = mapStartY + idx * mapSpacing;
-
-      // Map name
-      this.add
-        .text(200, y, mapData ? mapData.name : key, {
-          fontSize: '22px',
-          fill: '#fff',
-        })
-        .setOrigin(0, 0.5);
-
-      // Simple preview (theme)
-      this.add
-        .text(390, y, mapData ? `Terrain: ${mapData.theme}` : '', {
-          fontSize: '19px',
-          fill: '#ddd',
-        })
-        .setOrigin(0, 0.5);
-
-      // Select button
-      const btn = this.add
-        .rectangle(650, y, 160, 60, 0x008800, 0.7)
-        .setInteractive()
-        .setOrigin(0.5);
-      this.add
-        .text(650, y, 'Select', {
-          fontSize: '22px',
-          fill: '#fff',
-        })
-        .setOrigin(0.5);
-      if (key == 'forest') {
-        btn.setStrokeStyle(2, 0xffffff);
-      }
-      btn.on('pointerdown', () => {
-        this.selectMap(key);
-      });
-
-      this.mapButtons.push(btn);
-    });
-
-    this.add.image(770, 257, 'ui_icon_credits').setDisplaySize(28, 32);
-    this.add.text(790, 245, `Credits: ${fmt(this.rpgManager.state.credits, 'floor')}`, { fontSize: '24px', fill: '#ffe27a' });
-    const storeButton = this.add.rectangle(850, 330, 300, 70, 0x245b66, 0.95).setInteractive({ useHandCursor: true });
-    this.add.text(850, 330, 'Store', { fontSize: '27px', fill: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    storeButton.on('pointerdown', () => this.scene.start('StoreScene'));
-    const deploymentButton = this.add.rectangle(850, 420, 300, 70, 0x245b66, 0.95).setInteractive({ useHandCursor: true });
-    this.add.text(850, 420, 'Deployment', { fontSize: '27px', fill: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    deploymentButton.on('pointerdown', () => this.scene.start('DeploymentScene'));
+    this.missions = this.rpgManager.getAvailableMissions();
+    this.selectedMission = null;
+    this.missionLayout = getMissionGridLayout(this.scale.width, this.scale.height);
+    this.cameras.main.setBackgroundColor('#101923');
+    this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.98);
+    this.add.image(this.scale.width / 2, this.scale.height / 2, 'ui_panel_9').setDisplaySize(this.scale.width, this.scale.height).setAlpha(0.16);
+    this.add.text(this.scale.width / 2, 27, 'AVAILABLE MISSIONS', { fontSize: '27px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+    this.addButton(26, 20, 'Back to Hub', () => this.scene.start('MainHubScene'));
+    this.add.image(this.scale.width - 276, 26, 'ui_icon_credits').setDisplaySize(18, 22);
+    this.add.text(this.scale.width - 254, 19, `${fmt(this.rpgManager.state.credits)} Cr`, { fontSize: '15px', color: COLORS.gold });
     const hasProgress = Object.keys(this.rpgManager.state.units).length > 0
-      || this.rpgManager.state.inventory.length > 0
-      || this.rpgManager.state.credits !== 200
+      || this.rpgManager.state.inventory.length > 0 || this.rpgManager.state.credits !== 200
       || Object.keys(this.rpgManager.state.influence).length > 0;
-    const restartButton = this.add.rectangle(850, 140, 300, 54, 0x8b2525, 0.95).setInteractive({ useHandCursor: true });
-    this.add.image(735, 140, 'ui_restart').setDisplaySize(30, 30);
-    this.add.text(870, 140, hasProgress ? 'Restart Game' : 'New Game', { fontSize: '22px', fill: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
-    restartButton.on('pointerdown', () => {
-      const confirmation = new ConfirmationDialog(this, {
-        message: 'Start a new game? This will permanently erase your current campaign save.',
-        width: 520,
-        height: 220,
-        onConfirm: () => {
-          this.rpgManager.startNewGame();
-          this.registry.set('storeStock', null);
-          this.registry.set('storeRestockCost', 15);
-          this.scene.restart();
-        },
+    this.addButton(this.scale.width - 112, 18, hasProgress ? 'Restart' : 'New Game', () => this.confirmRestart(), {
+      fontSize: '11px', background: '#743b3b', padX: 7, padY: 5,
+    });
+    this.add.text(28, 65, `TURN ${this.rpgManager.state.turnNumber + 1} - Choose from three offers for each faction`, { fontSize: '13px', color: COLORS.muted });
+    this.missionCards = this.add.container(0, 0);
+    this.add.rectangle(this.scale.width / 2, this.missionLayout.detailsTop + this.missionLayout.detailsHeight / 2,
+      this.scale.width - 48, this.missionLayout.detailsHeight, 0x0b1722, 0.96).setStrokeStyle(1, 0x315267);
+    this.details = this.add.text(38, this.missionLayout.detailsTop + 7, 'Select a mission to inspect its rules and environment.', {
+      fontSize: '13px', color: COLORS.pale, wordWrap: { width: this.scale.width - 76 }, lineSpacing: 2,
+    });
+    this.prepareButton = this.addButton(this.scale.width / 2, this.missionLayout.prepareY,
+      'Select a mission first', () => this.prepareMission(), { fontSize: '18px' }).setOrigin(0.5);
+    this.drawMissions();
+  }
+
+  addButton(x, y, label, callback, style = {}) {
+    const button = this.add.text(x, y, label, {
+      fontSize: style.fontSize || '14px', color: '#ffffff',
+      backgroundColor: style.background || '#245b66', padding: { x: style.padX || 10, y: style.padY || 7 },
+    }).setInteractive({ useHandCursor: true });
+    button.on('pointerdown', callback);
+    return button;
+  }
+
+  drawMissions() {
+    this.missionCards.removeAll(true);
+    const offers = FACTIONS.flatMap(faction => this.missions.filter(mission => mission.faction === faction).slice(0, 3));
+    offers.forEach((mission, index) => {
+      const bounds = getMissionCardBounds(index, this.scale.width, this.scale.height);
+      const environment = getFactionEnvironment(mission.faction);
+      const selected = this.selectedMission?.id === mission.id;
+      const card = this.add.rectangle(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2,
+        bounds.width, bounds.height, selected ? 0x213b4e : 0x142536, 0.98)
+        .setStrokeStyle(2, selected ? 0xffe27a : 0x315267).setInteractive({ useHandCursor: true });
+      this.missionCards.add(card);
+
+      const dynamic = mission.missionType === 'DYNAMIC_ENGAGEMENT';
+      const restrictions = dynamic
+        ? '3 map-specific restrictions revealed in-mission'
+        : mission.restrictions.length ? mission.restrictions.map(restriction => restriction.label).join(' - ') : 'None';
+      const offerNumber = (Number(mission.offerIndex) || 0) + 1;
+      const textX = bounds.x + 12;
+      this.missionCards.add(this.add.text(textX, bounds.y + 6,
+        `${displayFactionName(mission.faction)} - Mission ${offerNumber}`, { fontSize: '12px', color: COLORS.gold, fontStyle: 'bold' }));
+      this.missionCards.add(this.add.text(textX, bounds.y + 25,
+        `${MISSION_TYPE_NAMES[mission.missionType] || mission.missionType} - Difficulty ${DIFFICULTY_NAMES[mission.difficulty] || mission.difficulty} - ${mission.wavesPerMap} wave(s)${dynamic ? ' per map' : ''}`,
+        { fontSize: '11px', color: COLORS.pale, wordWrap: { width: bounds.width - 24 } }));
+      this.missionCards.add(this.add.text(textX, bounds.y + 45,
+        `Environment: ${mission.environmentLabel || environment.label}`,
+        { fontSize: '10px', color: COLORS.muted, wordWrap: { width: bounds.width - 24 } }));
+      this.missionCards.add(this.add.text(textX, bounds.y + 64,
+        `Restrictions: ${restrictions} - Reward x${fmt(mission.rewardMultiplier)}`,
+        { fontSize: '10px', color: COLORS.pale, wordWrap: { width: bounds.width - 24 }, lineSpacing: 1 }));
+
+      card.on('pointerdown', (pointer, localX, localY, event) => {
+        event?.stopPropagation?.();
+        this.selectedMission = mission;
+        this.drawMissions();
+        this.updateDetails();
       });
-      confirmation.show();
     });
-
-    // Difficulty selection title
-    this.add
-      .text(640, 505, 'Select Difficulty', {
-        fontSize: '22px',
-        fill: '#fff',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-
-    // Difficulty buttons
-    const difficultyStartX = 240;
-    const difficultySpacing = 200;
-    this.difficultyButtons = [];
-
-    this.DIFFICULTY_KEYS.forEach((key, idx) => {
-      const difficultyData = window.GAME_SETTINGS.DIFFICULTY[key];
-      const x = difficultyStartX + idx * difficultySpacing;
-
-      // Get color based on difficulty
-      let btnColor;
-      switch (key) {
-        case 'EASY':
-          btnColor = 0x00aa00;
-          break; // Green
-        case 'NORMAL':
-          btnColor = 0x0088cc;
-          break; // Blue
-        case 'HARD':
-          btnColor = 0xaaaa00;
-          break; // Yellow
-        case 'EXPERT':
-          btnColor = 0xdd6600;
-          break; // Orange
-        case 'INSANE':
-          btnColor = 0xcc0000;
-          break; // Red
-        default:
-          btnColor = 0x888888;
-      }
-
-      // Difficulty button
-      const btn = this.add
-      .rectangle(x, 565, 160, 60, btnColor, 0.7)
-        .setInteractive()
-        .setOrigin(0.5);
-
-      // Difficulty name
-      this.add
-        .text(x, 565, difficultyData.name, {
-          fontSize: '24px',
-          fill: '#fff',
-        })
-        .setOrigin(0.5);
-
-      // Highlight selected difficulty
-      if (key === this.selectedDifficulty) {
-        btn.setStrokeStyle(2, 0xffffff);
-      }
-
-      btn.on('pointerdown', () => {
-        this.selectDifficulty(key);
-      });
-
-      this.difficultyButtons.push({ button: btn, key: key });
-    });
-
-    // Continue to mission preparation
-    this.startButton = this.add
-      .rectangle(640, 665, 240, 80, 0x008800, 0.8)
-      .setInteractive()
-      .setOrigin(0.5);
-
-    this.add
-      .text(640, 665, 'Prepare Deployment', {
-        fontSize: '27px',
-        fill: '#fff',
-      })
-      .setOrigin(0.5);
-
-    this.startButton.on('pointerdown', () => {
-      this.startGame();
-    });
-
-    // Keyboard navigation (1/2/3 for maps)
-    this.input.keyboard.on('keydown-ONE', () =>
-      this.selectMap(this.MAP_KEYS[0])
-    );
-    this.input.keyboard.on('keydown-TWO', () =>
-      this.selectMap(this.MAP_KEYS[1])
-    );
-    this.input.keyboard.on('keydown-THREE', () =>
-      this.selectMap(this.MAP_KEYS[2])
-    );
+    if (!offers.length) this.missionCards.add(this.add.text(40, this.missionLayout.top, 'No mission offers are available.', { fontSize: '15px', color: COLORS.muted }));
   }
 
-  selectMap(mapKey) {
-    this.registry.set('selectedMap', mapKey);
-    // Highlight the selected map button
-    this.mapButtons.forEach((btn, idx) => {
-      if (this.MAP_KEYS[idx] === mapKey) {
-        btn.setFillStyle(0x00aa00, 0.9);
-        btn.setStrokeStyle(2, 0xffffff);
-      } else {
-        btn.setFillStyle(0x008800, 0.7);
-        btn.setStrokeStyle(0);
-      }
-    });
-  }
-
-  selectDifficulty(difficultyKey) {
-    this.selectedDifficulty = difficultyKey;
-    this.registry.set('selectedDifficulty', difficultyKey);
-
-    // Update button appearances
-    this.difficultyButtons.forEach((item) => {
-      if (item.key === difficultyKey) {
-        item.button.setStrokeStyle(2, 0xffffff);
-      } else {
-        item.button.setStrokeStyle(0);
-      }
-    });
-  }
-
-  updatePreparationUI() {
-    // Mission preparation now lives in DeploymentScene.
-  }
-
-  startGame() {
-    if (!this.registry.get('selectedMap')) {
-      this.selectMap(this.MAP_KEYS[0]);
+  updateDetails() {
+    const mission = this.selectedMission;
+    if (!mission) {
+      this.details.setText('Select a mission to inspect its rules and environment.');
+      this.prepareButton.setText('Select a mission first');
+      return;
     }
-    if (!this.registry.get('selectedDifficulty')) {
-      this.registry.set('selectedDifficulty', this.selectedDifficulty);
-    }
-    if (window.setGameBackground) {
-      window.setGameBackground(this.registry.get('selectedMap'));
-    }
+    const restrictionText = mission.missionType === 'DYNAMIC_ENGAGEMENT'
+      ? 'Each map has a different restriction. It is revealed when that map begins.'
+      : mission.restrictions.length ? mission.restrictions.map(restriction => `- ${restriction.label}`).join('\n') : 'No restrictions.';
+    const typeDescription = {
+      SECURE_REGION: 'Protect-zone toughness: 10.',
+      BARRICADE: `Barricade health: 100 - toughness: 1 - ${mission.wavesPerMap} waves.`,
+      GAUNTLET: 'Waves automatically start with a one-second delay. Pause and manual wave controls are disabled. Toughness: 15.',
+      DYNAMIC_ENGAGEMENT: 'Three sequential maps. Each map starts fresh, with five protected-zone toughness. Any map loss fails the mission.',
+    }[mission.missionType];
+    const environment = mission.environmentLabel || getFactionEnvironment(mission.faction).label;
+    const mapCount = mission.missionType === 'DYNAMIC_ENGAGEMENT' ? `${mission.mapKeys.length} sequential maps` : '1 map';
+    this.details.setText(`${displayFactionName(mission.faction)} - ${MISSION_TYPE_NAMES[mission.missionType]} - Difficulty ${DIFFICULTY_NAMES[mission.difficulty]} - ${mapCount}\nEnvironment: ${environment}\n${typeDescription}\n${restrictionText}\nLaunch wages and equipment maintenance are calculated from your current deployment.`);
+    this.prepareButton.setText('Prepare Deployment');
+  }
+
+  prepareMission() {
+    if (!this.selectedMission) return;
+    this.registry.set('selectedMission', this.selectedMission);
+    this.registry.set('missionFaction', this.selectedMission.faction);
+    this.registry.set('missionEnvironmentKey', this.selectedMission.environmentKey || getFactionEnvironment(this.selectedMission.faction).key);
+    this.registry.set('selectedDifficulty', this.selectedMission.difficulty);
+    this.registry.set('selectedMap', this.selectedMission.mapKeys[0]);
+    this.registry.set('missionMapIndex', 0);
+    this.registry.set('missionRestriction', this.selectedMission.restrictionsByMap?.[0] || this.selectedMission.restrictions || []);
+    this.registry.set('missionRewardMultiplier', this.selectedMission.rewardMultiplier);
+    this.registry.set('missionSeed', this.selectedMission.mapSeeds[0]);
+    this.registry.set('missionRunId', this.selectedMission.id);
+    this.registry.set('deploymentReturnScene', 'MapSelectScene');
     this.scene.start('DeploymentScene');
+  }
+
+  confirmRestart() {
+    new ConfirmationDialog(this, {
+      message: 'Start a new game? This will permanently erase your current campaign save.',
+      width: 520, height: 220,
+      onConfirm: () => { this.rpgManager.startNewGame(); this.scene.restart(); },
+    }).show();
   }
 }

@@ -12,8 +12,8 @@ export function createSeededRandom(seed) {
   };
 }
 
-const DIFFICULTIES = { EASY: 1, NORMAL: 2, HARD: 3, EXPERT: 4, NIGHTMARE: 5 };
-const SPECIAL_TYPES = ['thermal_enhancement', 'snipers_nest', 'toxin_synthesizers', 'tactical_indoctrination', 'adaptability_network', 'dark_alley'];
+const DIFFICULTIES = { EASY: 1, NORMAL: 2, HARD: 3, EXPERT: 4, INSANE: 5 };
+export const SPECIAL_TILE_TYPES = ['thermal_enhancement', 'snipers_nest', 'toxin_synthesizers', 'tactical_indoctrination', 'adaptability_network', 'dark_alley'];
 const key = ({ x, y }) => `${x},${y}`;
 const edgeKey = (a, b) => [key(a), key(b)].sort().join('|');
 const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -222,11 +222,34 @@ export function rollAdditionalSpecialTileCount(random) {
   return count;
 }
 
-export function validateGeneratedMap(map, difficulty = map?.generation?.difficulty || 1) {
+export function isValidSpecialTilePlacement(map, point, type, existingTileToValidate = null) {
+  if (!map || !Number.isInteger(point?.x) || !Number.isInteger(point?.y)
+    || !SPECIAL_TILE_TYPES.includes(type)
+    || point.x < 0 || point.y < 0 || point.x >= map.width || point.y >= map.height) return false;
+  const targetKey = key(point);
+  const routes = map.paths || [];
+  const routeTiles = routes.flat();
+  if (routeTiles.some(tile => key(tile) === targetKey)
+    || [...(map.entryPoints || []), ...(map.exitPoints || [])].some(tile => key(tile) === targetKey)) return false;
+  if ((map.specialTiles || []).some(tile => tile !== existingTileToValidate && key(tile) === targetKey)
+    || restrictionTiles(map).has(targetKey)
+    || (map.blockedClearableTiles || []).some(tile => key(tile) === targetKey)) return false;
+  if ((map.buildings || []).some(building => getBuildingFootprint(building).some(tile => key(tile) === targetKey))) return false;
+  if (!routeTiles.length) return false;
+  const distance = Math.min(...routeTiles.map(tile => manhattan(tile, point)));
+  return type === 'dark_alley' ? distance === 1 : distance >= 1 && distance <= 3;
+}
+
+export function validateGeneratedMap(map, difficulty = map?.generation?.difficulty || 1, missionType = map?.generation?.missionType) {
   const path = map?.paths?.[0];
   if (!Number.isInteger(map?.width) || !Number.isInteger(map?.height) || !Array.isArray(path) || path.length < 2) return false;
   const offset = difficulty - 1;
-  if (map.width < 10 + offset || map.width > 14 + offset || map.height < 10 + offset || map.height > 14 + offset
+  if (missionType === 'BARRICADE') {
+    const source = map.generation?.sourceDimensions;
+    if (!source || map.width !== Math.max(7, Math.round(source.width * 0.35))
+      || map.height !== Math.max(7, Math.round(source.height * 0.35))) return false;
+    if (path.length < Math.round((22 + 2 * offset) * 0.35)) return false;
+  } else if (map.width < 10 + offset || map.width > 14 + offset || map.height < 10 + offset || map.height > 14 + offset
     || ![23 + 2 * offset, 24 + 2 * offset, 25 + 2 * offset].includes(map.width + map.height)) return false;
   const inside = ({ x, y }) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < map.width && y < map.height;
   if (!path.every(point => inside(point) && insidePathArea(point, map.width, map.height))) return false;
@@ -234,7 +257,7 @@ export function validateGeneratedMap(map, difficulty = map?.generation?.difficul
   if (!map.entryPoints?.some(p => p.x === path[0].x && p.y === path[0].y)
     || !map.exitPoints?.some(p => p.x === path.at(-1).x && p.y === path.at(-1).y)
     || manhattan(path[0], path.at(-1)) <= 1) return false;
-  if (path.length < 22 + 2 * offset) return false;
+  if (missionType !== 'BARRICADE' && path.length < 22 + 2 * offset) return false;
   for (let i = 1; i < path.length; i += 1) if (manhattan(path[i - 1], path[i]) !== 1) return false;
   const pathKeys = new Set(path.map(key));
   // A path may revisit a crossing tile, but may not run parallel directly beside itself.
@@ -261,11 +284,7 @@ export function validateGeneratedMap(map, difficulty = map?.generation?.difficul
   if (buildings.length && !map.buildings) return false;
   if ([...pathKeys].some(tile => restrictions.has(tile))) return false;
   if (!(map.specialTiles || []).length) return false;
-  for (const tile of map.specialTiles) {
-    if (!inside(tile) || restrictions.has(key(tile)) || pathKeys.has(key(tile))) return false;
-    const distance = Math.min(...path.map(p => manhattan(p, tile)));
-    if (tile.type === 'dark_alley' ? distance !== 1 : distance < 1 || distance > 3) return false;
-  }
+  for (const tile of map.specialTiles) if (!inside(tile) || !isValidSpecialTilePlacement(map, tile, tile.type, tile)) return false;
   const sectionCount = difficulty <= 2 ? 1 : 2;
   for (const [type, speed] of [['incline', 0.5], ['decline', 2]]) {
     const tiles = (map.terrainModifiers || []).filter(tile => tile.type === type && tile.speedMultiplier === speed);
@@ -279,12 +298,82 @@ export function validateGeneratedMap(map, difficulty = map?.generation?.difficul
     if (sections.some((start, index) => sections.slice(index + 1).some(other => Math.abs(start - other) <= 1))) return false;
   }
   const unclearable = [...restrictions].filter(tile => !pathKeys.has(tile)).length;
-  if (Math.abs(unclearable / (map.width * map.height) - 0.4) > 0.08) return false;
+  const expectedUnclearable = Math.round(map.width * map.height * 0.4);
+  if (unclearable !== expectedUnclearable) return false;
   return true;
 }
 
-export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts = 1000, faction = null } = {}) {
+function shrinkForBarricade(map, seed, difficulty) {
+  const width = Math.max(7, Math.round(map.width * 0.35));
+  const height = Math.max(7, Math.round(map.height * 0.35));
+  const random = createSeededRandom(seed);
+  const targetPathLength = Math.max(8, Math.round(map.paths[0].length * 0.35));
+  const path = buildWindingPath(width, height, targetPathLength, random)
+    || buildWindingPath(width, height, targetPathLength, random, true);
+  if (!path || manhattan(path[0], path.at(-1)) <= 1) return null;
+  const pathKeys = new Set(path.map(key));
+  const free = [];
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const point = { x, y };
+    if (!pathKeys.has(key(point))) free.push(point);
+  }
+  const distance = point => Math.min(...path.map(route => manhattan(route, point)));
+  const total = width * height;
+  const unclearableCount = Math.round(total * 0.4);
+  const specialCount = Math.min(map.specialTiles.length, Math.max(1, total - new Set(path.map(key)).size - unclearableCount));
+  if (total - new Set(path.map(key)).size < unclearableCount + 1) return null;
+  const specials = [];
+  const candidates = free.filter(point => distance(point) >= 1 && distance(point) <= 3);
+  for (let index = 0; index < specialCount && candidates.length; index += 1) {
+    const candidateIndex = Math.floor(createSeededRandom((seed + index + 1) >>> 0)() * candidates.length);
+    const point = candidates.splice(candidateIndex, 1)[0];
+    let type = map.specialTiles[index]?.type || 'thermal_enhancement';
+    if (type === 'dark_alley' && distance(point) !== 1) type = 'thermal_enhancement';
+    specials.push({ ...point, type });
+  }
+  if (!specials.length) return null;
+  const specialKeys = new Set(specials.map(key));
+  const remaining = free.filter(point => !specialKeys.has(key(point)));
+  remaining.sort((a, b) => distance(b) - distance(a));
+  const unclearable = remaining.splice(0, unclearableCount);
+  if (unclearable.length !== unclearableCount) return null;
+  const restricted = unclearable.map(point => ({ ...point, width: 1, height: 1 }));
+  const clearableCount = Math.round(remaining.length * 0.5);
+  const sectionCount = difficulty <= 2 ? 1 : 2;
+  const terrainModifiers = [];
+  const startsByType = sectionCount === 1 ? { incline: [1], decline: [4] } : { incline: [1, 5], decline: [3, 7] };
+  for (const [type, speedMultiplier] of [['incline', 0.5], ['decline', 2]]) {
+    for (const start of startsByType[type]) {
+      if (start + 1 >= path.length - 1) return null;
+      terrainModifiers.push({ ...path[start], type, speedMultiplier }, { ...path[start + 1], type, speedMultiplier });
+    }
+  }
+  const sourceDimensions = { width: map.width, height: map.height };
+  const reduced = {
+    ...map, width, height, paths: [path], entryPoints: [{ ...path[0] }], exitPoints: [{ ...path.at(-1) }],
+    placementRestrictions: restricted, buildings: [], specialTiles: specials,
+    blockedClearableTiles: remaining.slice(0, clearableCount), clearTiles: remaining.slice(clearableCount), terrainModifiers,
+    generation: {
+      ...map.generation, seed, missionType: 'BARRICADE', sourceDimensions,
+      sourcePathLength: map.paths[0].length, pathReduction: 1 - path.length / map.paths[0].length,
+      unclearableTileCount: unclearableCount, totalTileCount: total,
+    },
+  };
+  return validateGeneratedMap(reduced, difficulty, 'BARRICADE') ? reduced : null;
+}
+
+export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts = 1000, faction = null, missionType = 'SECURE_REGION', environmentKey = null } = {}) {
   const level = typeof difficulty === 'string' ? (DIFFICULTIES[difficulty] || 1) : Math.max(1, Math.min(5, Number(difficulty) || 1));
+  if (missionType === 'BARRICADE') {
+    for (let attempt = 0; attempt < Math.min(maxAttempts, 100); attempt += 1) {
+      const source = generateMissionMap(baseMap, (Number(seed) + Math.imul(attempt, 0x9e3779b9)) >>> 0, {
+        difficulty: level, maxAttempts: 100, faction, environmentKey,
+      });
+      const reduced = shrinkForBarricade(source, (Number(seed) + attempt) >>> 0, level);
+      if (reduced) return reduced;
+    }
+    throw new Error(`Could not generate a reduced barricade map from seed ${seed}`);
+  }
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const attemptSeed = (Number(seed) + Math.imul(attempt, 0x9e3779b9)) >>> 0;
     const random = createSeededRandom(attemptSeed);
@@ -313,7 +402,7 @@ export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts 
     const rolls = rollAdditionalSpecialTileCount(random);
     for (let i = 0; i < Math.min(1 + rolls, near.length); i += 1) {
       const location = choose(near);
-      specials.push({ ...location, type: SPECIAL_TYPES[Math.floor(random() * SPECIAL_TYPES.length)] });
+      specials.push({ ...location, type: SPECIAL_TILE_TYPES[Math.floor(random() * SPECIAL_TILE_TYPES.length)] });
     }
     // Ensure melee-only tiles are adjacent.
     specials.forEach(tile => { if (tile.type === 'dark_alley' && distances(tile) !== 1) tile.type = 'thermal_enhancement'; });
@@ -333,7 +422,12 @@ export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts 
       blockedClearableTiles: available.slice(0, clearableCount),
       clearTiles: available.slice(clearableCount),
       terrainModifiers: [],
-      generation: { seed: attemptSeed, difficulty: level },
+      generation: {
+        seed: attemptSeed, difficulty: level,
+        environmentKey,
+        unclearableTileCount: restricted.reduce((total, area) => total + area.width * area.height, 0),
+        totalTileCount: width * height,
+      },
     };
     const sectionCount = level <= 2 ? 1 : 2;
     const eligibleStarts = Array.from({ length: path.length - 1 }, (_, index) => index)

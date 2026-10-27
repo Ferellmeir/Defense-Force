@@ -1280,5 +1280,45 @@
     "weaponRestrictions": [
       "firearms"
     ]
+  },
+  "SIEGE_FRAME": {
+    "id": "SIEGE_FRAME",
+    "name": "Siege Frame",
+    "faction": "Laisung Collective",
+    "asset": "Siege_frame",
+    "characterArt": true,
+    "visualSize": { "width": 64, "height": 64 },
+    "visualOrigin": { "x": 0.5, "y": 0.95 },
+    "filtering": "linear",
+    "cost": 45,
+    "baseStats": {
+      "damage": 0, "damageType": "Physical", "range": 0, "attackSpeed": 1000,
+      "projectileSpeed": 0, "armorPenetration": 0, "attackSpeedModifier": 0,
+      "criticalChance": 0.1, "criticalModifier": 0.75, "rangedSkill": 0.1,
+      "meleeSkill": 0, "reloadSpeed": 0.3, "aoeDamageMultiplier": 1
+    },
+    "inherentAttacks": [{
+      "damage": 80, "damageType": "Physical", "range": 3,
+      "attacksPerSecond": 0.2, "criticalChance": 0, "criticalModifier": 0,
+      "aoeRadius": 1, "aoeDamageMultiplier": 0.5, "projectileAsset": "aoe"
+    }],
+    "passive": {
+      "name": "Inherent attack: 80 damage, 3 tile range; 50% damage in a 1 tile radius",
+      "type": "special", "property": "inherentAttack"
+    },
+    "pathTiers": [
+      { "tier": 1, "paths": [
+        { "id": "damage", "name": "Damage +5%", "effect": { "type": "stat", "stat": "damage", "mode": "percent", "value": 0.05 }, "maxBonus": { "type": "stat", "stat": "damage", "mode": "percent", "value": 0.1 } },
+        { "id": "heavy_weapon_damage", "name": "Heavy weapon damage +10%", "effect": { "type": "special", "property": "heavyWeaponDamageBonus", "value": 0.1 }, "maxBonus": { "type": "special", "property": "aoeRadiusBonus", "value": 1 } }
+      ]},
+      { "tier": 2, "paths": [
+        { "id": "random_path", "name": "Random stat (deployment roll)", "effect": { "type": "special", "property": "randomStatPath" }, "maxBonus": { "type": "special", "property": "randomStatPathMax" } },
+        { "id": "exposed_critical_damage", "name": "Critical hits against Exposed enemies deal +25% damage", "effect": { "type": "special", "property": "exposedCriticalDamageBonus", "value": 0.25 }, "maxBonus": { "type": "special", "property": "exposeChance", "value": 0.15, "damageTaken": 0.2, "duration": 5000 } }
+      ]},
+      { "tier": 3, "paths": [
+        { "id": "missing_health_damage", "name": "10% chance to deal +1% damage per missing target health percent", "effect": { "type": "special", "property": "missingHealthDamageChance", "value": 0.1, "perMissingHealthPercent": 0.01 }, "maxBonus": { "type": "special", "property": "aoeDamageBonus", "value": 0.3 } },
+        { "id": "reload_speed", "name": "Reload speed +30%", "effect": { "type": "stat", "stat": "reloadSpeed", "mode": "percent", "value": 0.3 }, "maxBonus": { "type": "special", "property": "slowChance", "value": 0.15, "factor": 0.65, "duration": 5000 } }
+      ]}
+    ]
   }
 }

@@ -11,9 +11,9 @@ const enemies = readJson('../src/assets/config/enemies.json');
 const units = readJson('../src/assets/config/units.json');
 const equipment = readJson('../src/assets/config/equipment.json');
 
-test('enemy configuration matches the five authoritative baselines', () => {
+test('enemy configuration matches the five authoritative health baselines and preserves other stats', () => {
   assert.deepEqual(Object.values(enemies).map(({ force, health, tilesPerSecond, armor }) => [force, health, tilesPerSecond, armor]), [
-    [2, 100, 1, 0], [4, 75, 2, 0], [10, 200, 0.75, 25], [20, 500, 1, 20], [400, 10000, 0.75, 20],
+    [2, 200, 1, 0], [4, 150, 2, 0], [10, 400, 0.75, 25], [20, 1000, 1, 20], [400, 20000, 0.75, 20],
   ]);
   assert.ok(Object.values(enemies).every(enemy => !('healthMultiplier' in enemy)));
 });
@@ -32,7 +32,7 @@ test('missions start with 80 Force and reset to that configured starting amount'
 });
 
 test('workbook unit deployment costs and free makeshift weapon are configured', () => {
-  assert.deepEqual(Object.values(units).map(unit => unit.cost), [9, 30, 25, 15, 35, 15, 28, 40]);
+  assert.deepEqual(Object.values(units).map(unit => unit.cost), [9, 30, 25, 15, 35, 15, 28, 40, 45]);
   assert.equal(equipment.items.lead_pipe.rarity, 'MAKESHIFT');
   assert.equal(equipment.items.lead_pipe.damage, 35);
   assert.equal(equipment.items.lead_pipe.hands, 2);

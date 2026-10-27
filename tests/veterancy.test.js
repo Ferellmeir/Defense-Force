@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import RPGManager from '../src/systems/RPGManager.js';
+import { getAvailableVeterancyPathOptions, getVeterancyPathButtonY } from '../src/systems/veterancyPathChoices.js';
 
 const paths = [
   { id: 'damage', effect: { type: 'stat', stat: 'damage', mode: 'percent', value: 0.05 } },
@@ -66,6 +67,28 @@ test('keeps an XP unlocked upgrade available without spending when Force is insu
   assert.equal(tower.pathProgress.damage, undefined);
   economy.force = 10;
   assert.equal(manager.canPurchaseVeterancy(tower, 'damage'), true);
+});
+
+test('all three paths in an available tier are selectable and the third applies once', () => {
+  const { manager, tower } = createFixture(20, 10);
+  const available = manager.getPathChoiceState(tower.characterId, tower)[0].paths
+    .filter(path => path.available);
+  assert.deepEqual(available.map(path => path.id), ['damage', 'range', 'reload']);
+  assert.equal(manager.getAvailablePathIds(tower.characterId, tower).length, 3);
+  const uiOptions = getAvailableVeterancyPathOptions(manager.getPathChoiceState(tower.characterId, tower));
+  assert.deepEqual(uiOptions.map(option => option.path.id), ['damage', 'range', 'reload']);
+  const buttonYs = uiOptions.map((_, index) => getVeterancyPathButtonY(index));
+  assert.deepEqual(buttonYs, [460, 495, 530]);
+  assert.ok(buttonYs[2] + 35 <= 600, 'third option fits inside the tower panel');
+
+  assert.equal(manager.purchaseVeterancy(tower, available[2].id), true);
+  assert.equal(tower.pathProgress.reload, 1);
+  assert.equal(tower.veterancy, 1);
+  const stats = manager.getEffectiveStats(tower.characterId, tower);
+  const withoutPath = manager.getEffectiveStats(tower.characterId, {
+    veterancy: 1, pathProgress: {}, selectedPaths: {},
+  });
+  assert.ok(Math.abs(stats.reloadSpeed / withoutPath.reloadSpeed - 0.9) < 1e-10);
 });
 
 test('does not mutate progression when Force spending is rejected', () => {

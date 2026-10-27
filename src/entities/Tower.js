@@ -7,6 +7,7 @@ import { isWithinWeaponRange } from '../utils/weaponRange.js';
 import { selectTarget } from '../utils/targetSelection.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { withTileChanceBonus } from '../systems/combatChance.js';
+import { getCurrentMissionRestrictions, isDebuffBanned } from '../systems/missionRestrictions.js';
 import { TILE_EFFECTS } from '../systems/tileEffects.js';
 
 const DUAL_WIELD_ATTACK_OFFSET = 120;
@@ -305,7 +306,8 @@ export default class Tower extends Phaser.GameObjects.Container {
     const armorReduction = this.towerData.specialProperties?.find(property => property.property === 'armorReductionOnEnter');
     if ((!mark && !armorReduction) || this.markedCandidates.has(enemy)) return;
     this.markedCandidates.add(enemy);
-    if (mark && Math.random() < withTileChanceBonus(mark.chance, this)) {
+    const markBanned = isDebuffBanned('marked', getCurrentMissionRestrictions(this.scene.registry));
+    if (mark && !markBanned && Math.random() < withTileChanceBonus(mark.chance, this)) {
       enemy.applyStatusEffect({
         type: 'marked', damageTakenMultiplier: Number(mark.damageTaken || 0), duration: Number(mark.duration || 0),
       });
@@ -343,6 +345,11 @@ export default class Tower extends Phaser.GameObjects.Container {
     const target = attackState.target || this.target;
     const specialProperties = weaponStats.specialProperties || [];
     let damage = weaponStats.damage;
+    const heavyDamageBonus = specialProperties.find(property => property.property === 'heavyWeaponDamageBonus');
+    if (heavyDamageBonus && (weaponStats.weaponHands === 2
+      || this.equipment.weapons?.find(weapon => weapon?.id === weaponStats.weaponId)?.hands === 2)) {
+      damage *= 1 + Number(heavyDamageBonus.value || 0);
+    }
     const unitCombatBonuses = getUnitCombatBonuses({
       specialProperties,
       weaponAttacks: this.towerData.weaponAttacks || [],
@@ -400,6 +407,8 @@ export default class Tower extends Phaser.GameObjects.Container {
       canHitFlying: this.canTargetFlying(),
       specialTileType: this.placementTile?.specialType,
     };
+    projectileData.primaryTarget = target;
+    projectileData.missingHealthDamageChance = specialProperties.find(property => property.property === 'missingHealthDamageChance') || null;
     if (this.placementTile?.specialType === 'snipers_nest' && target) {
       const tileSize = this.scene.mapManager?.getCurrentMap?.()?.tileSize || 64;
       projectileData.damage *= 1 + Math.floor(Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y) / tileSize)
@@ -418,6 +427,10 @@ export default class Tower extends Phaser.GameObjects.Container {
       const tileSize = this.scene.mapManager?.getCurrentMap?.()?.tileSize || 0;
       projectileData.aoeRadius = weaponStats.aoeRadius || Number(areaEffect.radius || 0) * tileSize;
       projectileData.aoeDamageMultiplier = Number(weaponStats.aoeDamageMultiplier ?? areaEffect.multiplier ?? 1);
+    }
+    if (!areaEffect && Number(weaponStats.aoeRadius) > 0) {
+      projectileData.aoeRadius = Number(weaponStats.aoeRadius);
+      projectileData.aoeDamageMultiplier = Number(weaponStats.aoeDamageMultiplier ?? 1);
     }
 
     // Spawn projectile

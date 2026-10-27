@@ -1,4 +1,5 @@
 import { isUnclearableTile } from './tileClearing.js';
+import { getCurrentMissionRestrictions, getDeploymentRestrictionFailure } from './missionRestrictions.js';
 
 export default class TowerManager {
   constructor(scene, TowerClass) {
@@ -52,6 +53,10 @@ export default class TowerManager {
       ? entry === unitId && (!selectedId || selectedId === unitId)
       : entry.deploymentId === selectedId && entry.unitId === unitId);
     const deploymentCost = rpgManager.getDeploymentForceCost(unitId, deployment);
+    const restrictionDeployment = typeof deployment === 'string'
+      ? { unitId: deployment, equipped: rpgManager.getOwnedUnit(deployment)?.equipped, augments: rpgManager.getOwnedUnit(deployment)?.augments }
+      : deployment;
+    const restrictionFailure = getDeploymentRestrictionFailure(restrictionDeployment, getCurrentMissionRestrictions(registry), rpgManager);
     const position = tile?.gridPosition;
     const map = this.scene.mapManager.getCurrentMap();
     const isPathTile = position && this.scene.pathTileKeys?.has(`${position.x},${position.y}`);
@@ -59,6 +64,10 @@ export default class TowerManager {
       || !deployment || !Number.isFinite(deploymentCost)
       || deploymentCost < 0 || economyManager.getForce() < deploymentCost || isPathTile
       || isUnclearableTile(map, position)) return false;
+    if (restrictionFailure) {
+      this.scene.events.emit('showMessage', restrictionFailure, 2500);
+      return false;
+    }
 
     const progression = rpgManager.createDeploymentProgression(unitId, {
       equipped: deployment.equipped,
@@ -89,7 +98,17 @@ export default class TowerManager {
   }
 
   clear() {
-    console.log('[TowerManager.clear] called. this.towerGroup:', this.towerGroup);
-    this.towerGroup.clear(true, true);
+    const group = this.towerGroup;
+    // Phaser's UpdateList destroys Groups during Scene shutdown before the
+    // Scene's `shutdown` listeners run. Group.destroy() clears its members,
+    // then sets both `scene` and `children` to undefined. The manager keeps
+    // its reference, so a later cleanup call must recognize that lifecycle.
+    if (!group || !group.scene || !group.children || typeof group.children.size !== 'number') {
+      this.towerGroup = null;
+      return false;
+    }
+
+    group.clear(true, true);
+    return true;
   }
 }

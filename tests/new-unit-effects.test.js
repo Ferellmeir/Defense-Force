@@ -25,24 +25,34 @@ function managerFor(unitId, left, right = null) {
 test('random path uses five equal slots, doubles rank values, affects profiles, and stays deployment local', () => {
   const originalRandom = Math.random;
   const expected = [
-      ['criticalChance', 0.05], ['criticalModifier', 0.2], ['attackSpeedModifier', 0.1], ['range', 0.4], ['reloadSpeed', 1 / 1.1],
+      ['criticalChance', 0.05, 'Critical Chance +5%'],
+      ['criticalModifier', 0.2, 'Critical Damage +20%'],
+      ['attackSpeedModifier', 0.1, 'Attack Speed +10%'],
+      ['range', 0.4, 'Range +0.4 tiles'],
+      ['reloadSpeed', 1 / 1.1, 'Reload Speed +10%'],
   ];
   try {
     const manager = managerFor('GUTTER_THUGS', 'slum_gat');
-    expected.forEach(([stat, value], index) => {
+    expected.forEach(([stat, value, displayName], index) => {
       Math.random = () => (index + 0.01) / expected.length;
-      const one = manager.getEffectiveStats('GUTTER_THUGS', { pathProgress: { random_path: 1 } });
+      const progression = manager.createDeploymentProgression('GUTTER_THUGS');
+      progression.pathProgress = { random_path: 1 };
+      progression.selectedPaths = { random_path: 1 };
+      const one = manager.getEffectiveStats('GUTTER_THUGS', progression);
       assert.deepEqual(one.randomStat, { stat, value, ...(stat === 'reloadSpeed' ? { mode: 'multiplier' } : {}) });
+      const path = manager.getPathChoiceState('GUTTER_THUGS', progression)
+        .flatMap(tier => tier.paths).find(candidate => candidate.id === 'random_path');
+      assert.equal(path.name, displayName);
       const profile = one.weaponAttacks[0];
       if (stat === 'criticalChance') assert.equal(profile.criticalChance, 0.1);
       if (stat === 'criticalModifier') assert.equal(profile.criticalModifier, 1.7);
       if (stat === 'attackSpeedModifier') assert.ok(profile.attackSpeed < 1000 / 0.85 / 0.95);
       if (stat === 'range') assert.equal(profile.range, 3 * 64 + 0.4 * 64);
       if (stat === 'reloadSpeed') assert.equal(profile.reloadSpeed, 2 / 0.95 / 1.1);
-      const other = manager.getEffectiveStats('GUTTER_THUGS', { pathProgress: { random_path: 1 } });
+      const other = manager.getEffectiveStats('GUTTER_THUGS', progression);
       assert.deepEqual(other.randomStat, one.randomStat);
       const independent = manager.getEffectiveStats('GUTTER_THUGS', { pathProgress: { random_path: 1 }, randomStat: null });
-      assert.deepEqual(independent.randomStat, one.randomStat);
+      assert.equal(independent.randomStat, null);
     });
   } finally {
     Math.random = originalRandom;
@@ -65,6 +75,10 @@ test('each deployment gets its own stored roll, activated by its path, without c
     assert.equal(withoutPath.weaponAttacks[0].criticalChance, 0.05);
     firstDeployment.pathProgress.random_path = 1;
     firstDeployment.selectedPaths.random_path = 1;
+    const randomPath = manager.getPathChoiceState('GUTTER_THUGS', firstDeployment)
+      .flatMap(tier => tier.paths).find(path => path.id === 'random_path');
+    assert.equal(randomPath.name, 'Critical Chance +5%');
+    assert.match(randomPath.description, /Critical Chance \+5%/);
     const first = manager.getEffectiveStats('GUTTER_THUGS', firstDeployment);
     assert.equal(first.weaponAttacks[0].criticalChance, 0.1);
     const refreshed = manager.getEffectiveStats('GUTTER_THUGS', firstDeployment);

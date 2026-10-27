@@ -122,6 +122,22 @@ export default class Enemy extends Phaser.GameObjects.Container {
    * @param {number} delta - Time since last update
    */
   moveAlongPath(delta) {
+    const barricade = this.scene.barricade;
+    if (barricade?.health > 0 && this.currentPathIndex >= barricade.pathIndex) {
+      this.currentPathIndex = barricade.pathIndex;
+      this.t = 0;
+      const point = this.path[this.currentPathIndex];
+      if (point) { this.x = point.x; this.y = point.y; this.updateProjectedVisuals(); }
+      const now = Number(this.scene.gameTime) || 0;
+      this.barricadeNextDamageAt ??= now + 2000;
+      if (now >= this.barricadeNextDamageAt) {
+        const countsAs = Number(this.data.countsAs) || ({ NORMAL: 1, FAST: 1, ARMORED: 2, ELITE: 3, BOSS: 100 }[String(this.type).toUpperCase()] || 1);
+        barricade.takeDamage(countsAs);
+        this.barricadeNextDamageAt = now + 2000;
+      }
+      return;
+    }
+
     // Calculate speed (accounting for slow effects)
     const tileSize = this.scene.mapManager?.getCurrentMap?.()?.tileSize || 0;
     let speed = (Number(this.data.tilesPerSecond) || 0) * tileSize;

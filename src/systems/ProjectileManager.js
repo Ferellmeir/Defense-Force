@@ -27,6 +27,13 @@ export default class ProjectileManager {
   }
 
   clear() {
-    this.projectileGroup.clear(true, true);
+    const group = this.projectileGroup;
+    if (!group || !group.scene || !group.children || typeof group.children.size !== 'number') {
+      this.projectileGroup = null;
+      return false;
+    }
+
+    group.clear(true, true);
+    return true;
   }
 }

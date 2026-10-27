@@ -26,11 +26,15 @@ export default class WaveManager {
     this.difficultyKey = scene.registry.get('selectedDifficulty') || 'EASY';
     this.difficultySettings =
       window.GAME_SETTINGS.DIFFICULTY[this.difficultyKey];
+    this.mission = scene.registry.get('selectedMission');
+    this.missionType = this.mission?.missionType || 'SECURE_REGION';
+    this.autoWaveDelay = this.missionType === 'GAUNTLET' ? 1000 : AUTO_WAVE_DELAY_MS;
 
     this.waveConfiguration = window.GAME_SETTINGS.MISSION_WAVES;
     const generated = generateMissionWaves({
       difficulty: this.difficultyKey,
       enemies: window.GAME_SETTINGS.ENEMIES,
+      totalWaves: this.mission?.wavesPerMap,
       random: createSeededRandom(scene.missionSeed ?? scene.registry.get('missionSeed') ?? 0),
     });
     this.waveList = this.waveConfiguration?.status === 'CONFIGURED'
@@ -43,7 +47,17 @@ export default class WaveManager {
       : generated.waves;
     this.totalWaves = this.waveList.length;
     const difficultyIndex = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'INSANE'].indexOf(this.difficultyKey);
-    this.difficultyHpMultiplier = difficultyIndex < 0 ? 1 : 1 + 0.2 * difficultyIndex;
+    const numericDifficulty = difficultyIndex < 0 ? 1 : difficultyIndex + 1;
+    this.difficultyHpMultiplier = this.missionType === 'DYNAMIC_ENGAGEMENT'
+      ? 1 + 0.2 * (numericDifficulty * 1.5 - 1)
+      : 1 + 0.2 * (numericDifficulty - 1);
+    const enemyCountMultiplier = Number(this.mission?.parameters?.enemyCountMultiplier) || 1;
+    if (enemyCountMultiplier !== 1) {
+      this.waveList = this.waveList.map(wave => {
+        const groups = wave.groups.map(group => ({ ...group, count: Math.max(1, Math.round(group.count * enemyCountMultiplier)) }));
+        return { ...wave, groups, count: groups.reduce((total, group) => total + group.count, 0) };
+      });
+    }
 
     console.log(
       `WaveManager initialized with difficulty: ${this.difficultyKey}`
@@ -89,6 +103,7 @@ export default class WaveManager {
   startNextWave(source = 'manual') {
     if (this.isCleanedUp || this.scene.isGameOver
       || (source === 'automatic' && !this.autoStartAuthorized)) return false;
+    if (this.missionType === 'GAUNTLET' && source === 'manual') return false;
 
     if (this.currentWave >= this.totalWaves) return false;
 
@@ -109,7 +124,7 @@ export default class WaveManager {
 
     // Apply each fifth-wave increase to that fifth wave and all later waves.
     if (nextWaveNumber % 5 === 0) {
-      this.forceXpBaselineMultiplier *= 1.15;
+      this.forceXpBaselineMultiplier *= 1.015;
       this.enemyHealthBaselineMultiplier *= 1.15;
     }
 
@@ -245,9 +260,9 @@ export default class WaveManager {
 
   scheduleNextWave() {
     if (this.isCleanedUp || this.nextWaveTimer || this.currentWave >= this.totalWaves) return false;
-    this.nextWaveDeadline = this.getMissionTime() + AUTO_WAVE_DELAY_MS;
+    this.nextWaveDeadline = this.getMissionTime() + this.autoWaveDelay;
     this.lastCountdownSeconds = null;
-    this.nextWaveTimer = this.scene.time.delayedCall(AUTO_WAVE_DELAY_MS, () => {
+    this.nextWaveTimer = this.scene.time.delayedCall(this.autoWaveDelay, () => {
       if (!this.nextWaveTimer || this.isCleanedUp) return;
       this.nextWaveTimer = null;
       this.nextWaveDeadline = null;

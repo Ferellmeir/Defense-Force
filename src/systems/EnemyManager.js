@@ -36,6 +36,13 @@ export default class EnemyManager {
   }
 
   clear() {
-    this.enemyGroup.clear(true, true);
+    const group = this.enemyGroup;
+    if (!group || !group.scene || !group.children || typeof group.children.size !== 'number') {
+      this.enemyGroup = null;
+      return false;
+    }
+
+    group.clear(true, true);
+    return true;
   }
 }

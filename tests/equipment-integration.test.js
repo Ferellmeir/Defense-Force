@@ -23,15 +23,19 @@ test('workbook equipment prices are used and Store purchases persist the full ch
     lasor_blade: 50,
     chain_gun: 110,
     thermal_lance: 120,
-    molotov_cocktail: 75,
     munition_grade_barrage_rifle: 80,
     caustic_k38_rifle: 180,
-    ghost_blade: 70,
     auto_targeting_rifle: 300,
     coupler_fibers: 30,
     magwell_spacer: 32,
   };
   Object.entries(costs).forEach(([id, cost]) => assert.equal(manager.getEquipmentCreditCost(id), cost));
+  assert.equal(manager.getItemDefinition('molotov_cocktail').cost, 75);
+  assert.equal(manager.getEquipmentCreditCost('molotov_cocktail'), null);
+  assert.equal(manager.purchaseEquipment('molotov_cocktail'), false);
+  assert.equal(manager.getItemDefinition('ghost_blade').cost, 70);
+  assert.equal(manager.getEquipmentCreditCost('ghost_blade'), null);
+  assert.equal(manager.purchaseEquipment('ghost_blade'), false);
   assert.equal(manager.purchaseEquipment('chain_gun'), true);
   assert.equal(manager.state.credits, 390);
   assert.deepEqual(manager.state.inventory, [{ itemId: 'chain_gun', durability: null }]);
@@ -56,7 +60,7 @@ test('Store stock omits makeshift and unpriced equipment, including explicit nul
     state: { inventory: [] },
     random: () => 0,
   });
-  assert.equal(stock.equipment.length, 6);
+  assert.equal(stock.equipment.length, 4);
   assert.equal(stock.equipment.every(id => id === 'priced'), true);
 });
 

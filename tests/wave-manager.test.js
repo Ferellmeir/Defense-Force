@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import WaveManager from '../src/systems/WaveManager.js';
+import { awardEnemyKillRewards } from '../src/systems/enemyRewards.js';
 
 class FakeTimer {
   constructor(clock, delay, callback) {
@@ -287,22 +288,33 @@ test('invalid wave starts leave Force and wave state unchanged', () => {
   assert.equal(scheduledFixture.scene.economyManager.force, 12);
 });
 
-test('the fifth wave raises Force/XP and HP baselines by 1.15 for that wave and later waves', () => {
+test('the fifth wave raises Force/XP baseline by 1.015 and HP baseline by 1.15 for that wave and later waves', () => {
   const fixture = createFixture(6, 1);
   for (let wave = 1; wave <= 5; wave += 1) {
     assert.equal(fixture.manager.startNextWave('manual'), true);
   }
-  assert.deepEqual(fixture.scene.spawned.map(enemy => enemy.data.force), [1, 1, 1, 1, 1.15]);
+  assert.deepEqual(fixture.scene.spawned.map(enemy => enemy.data.force), [1, 1, 1, 1, 1.015]);
   assert.ok(Math.abs(fixture.scene.spawned[4].data.health - 115) < 1e-10);
-  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.15);
+  let awardedXp = 0;
+  let awardedForce = 0;
+  const killer = { addExperience: amount => { awardedXp += amount; } };
+  awardEnemyKillRewards({
+    data: fixture.scene.spawned[4].data, lastDamageSource: killer,
+    rewardsAwarded: false, xpAwarded: false,
+  }, { economyManager: {
+    addEnemyKill() {}, addForce: amount => { awardedForce += amount; },
+  } });
+  assert.equal(awardedForce, 1.015);
+  assert.equal(awardedXp, 1.015);
+  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.015);
   assert.equal(fixture.manager.enemyHealthBaselineMultiplier, 1.15);
   assert.equal(fixture.manager.startNextWave('manual'), true);
-  assert.deepEqual(fixture.scene.spawned.map(enemy => enemy.data.force), [1, 1, 1, 1, 1.15, 1.15]);
+  assert.deepEqual(fixture.scene.spawned.map(enemy => enemy.data.force), [1, 1, 1, 1, 1.015, 1.015]);
   assert.ok(fixture.scene.spawned.slice(4).every(enemy => Math.abs(enemy.data.health - 115) < 1e-10));
-  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.15);
+  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.015);
   assert.equal(fixture.manager.enemyHealthBaselineMultiplier, 1.15);
   assert.equal(fixture.manager.startNextWave('manual'), false);
-  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.15);
+  assert.equal(fixture.manager.forceXpBaselineMultiplier, 1.015);
   assert.equal(fixture.manager.enemyHealthBaselineMultiplier, 1.15);
 });
 
@@ -314,10 +326,10 @@ test('difficulty HP scaling remains separate from fifth-wave baseline scaling', 
   assert.ok(Math.abs(fixture.scene.spawned[4].data.health - 161) < 1e-10);
 });
 
-test('each fifth-wave boundary compounds both mission baselines by 1.15', () => {
+test('each fifth-wave boundary compounds Force/XP by 1.015 and health by 1.15', () => {
   const fixture = createFixture(11, 1);
   for (let wave = 1; wave <= 10; wave += 1) assert.equal(fixture.manager.startNextWave('manual'), true);
-  assert.ok(Math.abs(fixture.manager.forceXpBaselineMultiplier - (1.15 ** 2)) < 1e-12);
+  assert.ok(Math.abs(fixture.manager.forceXpBaselineMultiplier - (1.015 ** 2)) < 1e-12);
   assert.ok(Math.abs(fixture.manager.enemyHealthBaselineMultiplier - (1.15 ** 2)) < 1e-12);
 });
 
@@ -329,7 +341,7 @@ test('overlapping pre-fifth-wave spawns keep their original wave scaling', () =>
   wave4Timer.fire();
   const wave4Spawns = fixture.scene.spawned.filter(enemy => enemy.data.force === 1);
   assert.equal(wave4Spawns.length, 5);
-  assert.equal(fixture.scene.spawned.filter(enemy => enemy.data.force === 1.15).length, 1);
+  assert.equal(fixture.scene.spawned.filter(enemy => enemy.data.force === 1.015).length, 1);
 });
 
 test('Armored keeps 15 armor through Wave 4 and its configured armor from Wave 5', () => {

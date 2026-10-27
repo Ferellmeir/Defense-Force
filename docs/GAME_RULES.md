@@ -63,46 +63,46 @@ Maps depend on the mission but generally they are algorithmically generated incl
 On victory the credit and influence reward for the mission is given to the player and there is a chance to get equipment and a slight chance for a unit 
 
 Force   
-Every enemy killed grants the player at least 1 force, stronger enemies grant more force and experience and every 5th wave that force and xp is multiplied by 1.15 which becomes the new baseline 
+Every enemy killed grants the player at least 1 force, stronger enemies grant more force and experience and every 5th wave that force and xp is multiplied by 1.015 which becomes the new baseline 
 
 Starting force  
 Players start with 80 Force unless otherwise stated according to the mission  
-Clearing a blocked tile costs 70 force
+Clearing a blocked tile costs 70 force \+35 per tile cleared afterwards
 
 Enemy types  
 Normal \- 2 force  
 Xp same as force  
 1 tile per second  
-100 health   
+200 health   
 Armor 0
 
 Fast \- 4 force  
 Xp same as force  
 2 tiles per second  
-75 health  
+150 health  
 Armor 0
 
 Armored \- 10 force  
 Xp same as force  
 .75 tiles per second  
-200 health  
-Armor 25  
+400 health  
+Armor 50  
 Counts as 2 normal enemies  
 Armored only has 15 armor before wave 5
 
 Elite \- 20 force  
 Xp same as force  
 1 tile per second  
-500 health   
-Armor 20  
+1000 health   
+Armor 40  
 Doesnt show up before wave 5  
 Counts as 3 normal enemies
 
 Boss \- 400 force  
 Xp same as force  
 .75 tiles per second   
-10000 health  
-Armor 20  
+20000 health  
+Armor 40  
 Doesnt show up before wave 15  
 Counts as 100 normal enemies
 
@@ -146,43 +146,56 @@ Mission types
 
 Missions have different difficulty ratings with increased rewards for harder missions
 
-Basic mission  
 Secure region  
 Survive set number of waves without a certain number enemies reaching protected zone   
-Around 10-25 waves  
+10-25 waves  
 10 toughness score for the protected zone
 
 Barricade   
 Enemies start close to protected zone but there is a fortification that takes time to break through   
 50% less waves (rounded up)  
-Map size \-65%  
-Player starts with a certain amount of points they can buy special tower tiles with (9-mission difficulty)  
+Map size and enemy path length \-65%  
+Player starts with a certain amount of points they can buy special tower tiles with. 5 points, they can buy any special tile (there should be a button that toggles between all special types and another button that allows the player to place the special tile where desired.) each special tile costs 1 point  
 \+25% units sent  
-\+10% starting credits  
+\+10% starting force  
 Barricade 100 health   
-Enemies deal their Counts as X normal enemies stat to barricade health every 2 seconds  
+Enemies stop at the barricade deal their Counts as X normal enemies stat to barricade health every 2 seconds until it is destroyed then continue moving toward protected zone  
 1 toughness score
 
 Gauntlet  
-Different types of missions like maybe 1 long wave that ramps up in difficulty that must be survived to complete, cant pause game  
-1 wave  
-15 toughness score
+Waves are sent with 1 sec delay between them instead of the default 30 seconds  
+No send next wave button  
+No pause  
+15 toughness score  
+Rewards 1.5xdefault
 
 Dynamic engagement  
-survive multiple phases with different maps \~3 average  
+survive multiple phases with 3 different maps   
 Units do not keep veterancy between maps (maybe introduce a version where they do later)  
 Force, XP, deployed units or any other change the player has made does not transfer into the new map, the new map is a fresh start.  
-10-15 waves per map  
-5 toughness score
+difficulty 1-2: 7 waves per map, difficulty 3-5: 10-15   
+5 toughness score for each map   
+Wave size and scaling restarts on each map.   
+There is a different restriction on each map, the restrictions are not shown to the player from the mission select screen. The relevant restriction is only displayed when the player enters the specific map where that restriction applies. Cost cap restrictions will not apply to dynamic engagement missions. Restrictions don’t repeat.  
+Higher difficulty doesnt make the maps longer and instead makes the hp scaling larger  
+This is only used for dynamic engagement missions, Enemy HP \*= 1 \+ 0.2 × (difficultyx1.5 − 1\)  
+A loss on any map is a total mission failure  
+If a unit or its equipment is restricted it may not be deployed on the mission map.  
+Wages, ammo, and maintenance are paid once at mission start, and equipment break rolls happen once after the mission. 
 
 Different restrictions can be placed on missions  
 No ranged weapons  
 No melee weapons   
+Specific damage type banned  
+Aoe banned  
+Specific debuff banned (not fire)  
+If a weapon or unit would inflict that debuff it is not inflicted  
 No aliens/alien tech  
-wages/ammo/maintenance cost must be under a certain number  
-Can only use units from certain faction  
+Mission expenses cost must be under a certain number  
 Cant use units or equipment from certain faction   
-and so on
+and so on  
+Non dynamic engagement missions have a 75% chance for no restrictions, 20% chance a mission has a restriction, 5% chance to have 2 restrictions  
+1 restriction increases mission rewards by 1.25x 2, by 1.5x
 
 A selection of missions are offered to the player which change after returning from a mission.  
 3 missions per faction   
@@ -238,7 +251,7 @@ Generation order
 1. Pick the size, then the spawn and protected zone.  
 2. Generate the path, retrying with a new seed if it can’t reach the minimum length.  
 3. Place the special tiles.  
-4. Place the unclearable tiles (25% of the map, farthest from the path first).  
+4. Place the unclearable tiles (40% of the map, farthest from the path first).  
 5. Of the remaining tiles, make 40-60% blocked and the rest clear.
 
 Equipment 
@@ -485,12 +498,12 @@ Chance for both increase 12.5% and 10% respectively per difficulty level up to
 
 Stores  
 Unit costs are 4.2x(in mission force cost to deploy)   
-Unit costs in influence stores are equal to the force cost of the unit but the player must pay in influence with that faction
+Unit/equipment/augment costs in influence stores are equal to the respective force cost but the player must pay in influence with that faction
 
 Credit store  
-6 equipment options   
-4 unit options  
-2 augment options  
+4 equipment options   
+3 unit options  
+1 augment options  
 Restock costs 15 credits and an additional 10 for every restock after the first
 
 Inventory also refreshes on turn advance.

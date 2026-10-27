@@ -110,6 +110,34 @@ test('invalid maps are rejected rather than returned', () => {
   assert.equal(validateGeneratedMap({ ...map, paths: [[{ x: 0, y: 0 }, { x: 2, y: 2 }]] }), false);
 });
 
+test('unclearable tiles use 40 percent of all map tiles, including Barricade maps', () => {
+  const countUnclearableTiles = map => {
+    const path = new Set(map.paths[0].map(point => `${point.x},${point.y}`));
+    const special = new Set(map.specialTiles.map(point => `${point.x},${point.y}`));
+    const unclearable = new Set();
+    for (const area of map.placementRestrictions) {
+      for (let y = area.y; y < area.y + area.height; y += 1) {
+        for (let x = area.x; x < area.x + area.width; x += 1) unclearable.add(`${x},${y}`);
+      }
+    }
+    for (const point of map.specialTiles) assert.equal(unclearable.has(`${point.x},${point.y}`), false);
+    for (const endpoint of [map.entryPoints[0], map.exitPoints[0]]) {
+      assert.equal(path.has(`${endpoint.x},${endpoint.y}`), true);
+      assert.equal(unclearable.has(`${endpoint.x},${endpoint.y}`), false);
+    }
+    return [...unclearable].filter(point => !path.has(point) && !special.has(point)).length;
+  };
+
+  for (let difficulty = 1; difficulty <= 5; difficulty += 1) {
+    const secure = generateMissionMap(baseMap, 30000 + difficulty, { difficulty });
+    assert.equal(countUnclearableTiles(secure), Math.round(secure.width * secure.height * 0.4));
+
+    const barricade = generateMissionMap(baseMap, 31000 + difficulty, { difficulty, missionType: 'BARRICADE' });
+    assert.equal(countUnclearableTiles(barricade), Math.round(barricade.width * barricade.height * 0.4));
+    assert.equal(validateGeneratedMap(barricade, difficulty, 'BARRICADE'), true);
+  }
+});
+
 const buildingMap = {
   ...baseMap,
   placementRestrictions: [

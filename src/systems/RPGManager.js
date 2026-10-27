@@ -1,5 +1,8 @@
 import { getProjectileSpeed } from './ProjectileSpeeds.js';
 import { settleMissionState } from './missionSettlement.js';
+import { generateFactionStoreStock, generateStoreStock } from './storeStock.js';
+import { FACTIONS, displayFactionName, factionDataName, getFactionInfluence } from '../utils/factions.js';
+import { createMissionBoard } from './missionBoard.js';
 
 const SAVE_KEY = 'scifi-tower-defense-rpg-v1';
 const VETERANCY_XP_BASE = 10;
@@ -12,6 +15,24 @@ const RANDOM_PATH_BONUSES = [
   { stat: 'range', value: 0.4 },
   { stat: 'reloadSpeed', value: 1 / 1.1, mode: 'multiplier' },
 ];
+const RANDOM_STAT_NAMES = {
+  criticalChance: 'Critical Chance',
+  criticalModifier: 'Critical Damage',
+  attackSpeedModifier: 'Attack Speed',
+  range: 'Range',
+  reloadSpeed: 'Reload Speed',
+};
+
+function describeRandomStat(bonus) {
+  if (!bonus?.stat) return null;
+  const name = RANDOM_STAT_NAMES[bonus.stat] || bonus.stat;
+  if (bonus.mode === 'multiplier') {
+    const percent = Math.round((1 / Number(bonus.value || 1) - 1) * 100);
+    return `${name} +${percent}%`;
+  }
+  if (bonus.stat === 'range') return `${name} +${Number(bonus.value)} tiles`;
+  return `${name} +${Math.round(Number(bonus.value || 0) * 100)}%`;
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -26,7 +47,17 @@ export default class RPGManager {
   }
 
   createDefaultState() {
-    return { units: {}, inventory: [], credits: 200, influence: {}, firstUnitDiscountAvailable: true, lastSettledMissionId: null };
+    return {
+      units: {}, inventory: [], credits: 200, influence: {}, totalInfluence: {}, firstUnitDiscountAvailable: true,
+      lastSettledMissionId: null, turnNumber: 0, turnStartCredits: 200,
+      lastTurnCreditChange: null, lastTurnUpkeep: null, lastMissionCostBreakdown: null,
+      lastAdvancedMissionId: null,
+      deploymentLineup: [],
+      allegiance: null,
+      lastAllegiancePayment: null,
+      availableMissions: null,
+      storeState: { creditStock: null, creditStockVersion: 2, creditRestocksThisTurn: 0, factionStores: {} },
+    };
   }
 
   loadState() {
@@ -63,16 +94,39 @@ export default class RPGManager {
             }];
           })
       );
-      return {
+      const state = {
         ...defaults,
         ...parsed,
         units,
         inventory: (parsed.inventory || []).filter(instance => !this.isPermanentlyAvailable(this.getItemDefinition(instance.itemId))),
+        deploymentLineup: Array.isArray(parsed.deploymentLineup)
+          ? parsed.deploymentLineup.slice(0, 5).map(id => this.getUnitDefinition(id) && this.getOwnedUnitFrom(savedUnits, id) ? id : null)
+          : [],
         credits: Number.isFinite(parsed.credits) ? parsed.credits : defaults.credits,
         influence: parsed.influence && typeof parsed.influence === 'object' ? parsed.influence : {},
         lastSettledMissionId: parsed.lastSettledMissionId || null,
         firstUnitDiscountAvailable: parsed.firstUnitDiscountAvailable !== false,
       };
+      state.turnNumber = Math.max(0, Math.floor(Number(parsed.turnNumber) || 0));
+      state.totalInfluence = parsed.totalInfluence && typeof parsed.totalInfluence === 'object'
+        ? parsed.totalInfluence : { ...state.influence };
+      state.turnStartCredits = Number.isFinite(parsed.turnStartCredits) ? parsed.turnStartCredits : state.credits;
+      state.lastTurnCreditChange = Number.isFinite(parsed.lastTurnCreditChange) ? parsed.lastTurnCreditChange : null;
+      state.lastTurnUpkeep = parsed.lastTurnUpkeep && typeof parsed.lastTurnUpkeep === 'object' ? parsed.lastTurnUpkeep : null;
+      state.lastMissionCostBreakdown = parsed.lastMissionCostBreakdown && typeof parsed.lastMissionCostBreakdown === 'object' ? parsed.lastMissionCostBreakdown : null;
+      state.lastAdvancedMissionId = parsed.lastAdvancedMissionId || null;
+      state.allegiance = FACTIONS.includes(displayFactionName(parsed.allegiance)) ? displayFactionName(parsed.allegiance) : null;
+      state.lastAllegiancePayment = parsed.lastAllegiancePayment && typeof parsed.lastAllegiancePayment === 'object' ? parsed.lastAllegiancePayment : null;
+      state.availableMissions = Array.isArray(parsed.availableMissions) ? parsed.availableMissions : null;
+      state.storeState = {
+        ...defaults.storeState,
+        ...(parsed.storeState || {}),
+        creditStockVersion: Math.max(0, Math.floor(Number(parsed.storeState?.creditStockVersion) || 0)),
+        creditRestocksThisTurn: Math.max(0, Math.floor(Number(parsed.storeState?.creditRestocksThisTurn) || 0)),
+        factionStores: parsed.storeState?.factionStores && typeof parsed.storeState.factionStores === 'object'
+          ? parsed.storeState.factionStores : {},
+      };
+      return state;
     } catch (error) {
       console.warn('[RPGManager] Could not load save data:', error);
       return defaults;
@@ -91,6 +145,19 @@ export default class RPGManager {
     return Object.values(this.units).map(unit => ({ definition: unit, owned: this.state.units[unit.id] || null }));
   }
 
+  getAvailableMissions(random = Math.random) {
+    const board = this.state.availableMissions;
+    const complete = Array.isArray(board) && board.length === FACTIONS.length * 3
+      && FACTIONS.every(faction => board.filter(mission => mission?.faction === faction).length === 3);
+    if (!complete) {
+      this.state.availableMissions = createMissionBoard({
+        turnNumber: this.state.turnNumber, units: this.units, equipment: this.equipment, random,
+      });
+      this.save();
+    }
+    return this.state.availableMissions;
+  }
+
   startNewGame() {
     window.localStorage.removeItem(SAVE_KEY);
     this.state = this.createDefaultState();
@@ -102,13 +169,14 @@ export default class RPGManager {
     return item?.rarity === 'MAKESHIFT';
   }
 
-  settleMission({ missionId, victory, difficulty, unitIds, missionFaction, random = Math.random }) {
+  settleMission({ missionId, victory, difficulty, unitIds, missionFaction, rewardMultiplier = 1, random = Math.random }) {
     const result = settleMissionState(this.state, {
       missionId,
       victory,
       difficulty,
       unitIds,
       missionFaction,
+      rewardMultiplier,
       units: this.units,
       equipment: this.equipment,
       addUnitCopy: unitId => this.addUnitCopy(unitId),
@@ -183,7 +251,7 @@ export default class RPGManager {
 
   getEquipmentCreditCost(itemId) {
     const item = this.equipment.items[itemId] || this.equipment.augments[itemId];
-    if (this.isPermanentlyAvailable(item)) return null;
+    if (!item || item.faction || this.isPermanentlyAvailable(item)) return null;
     const cost = item?.cost;
     return item && typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null;
   }
@@ -191,7 +259,7 @@ export default class RPGManager {
   purchaseEquipment(itemId) {
     const item = this.getItemDefinition(itemId);
     const cost = this.getEquipmentCreditCost(itemId);
-    if (!item || this.isPermanentlyAvailable(item) || cost === null || this.getItemInstance(itemId) || this.state.credits < 0 || this.state.credits < cost) return false;
+    if (!item || item.faction || this.isPermanentlyAvailable(item) || cost === null || this.getItemInstance(itemId) || this.state.credits < 0 || this.state.credits < cost) return false;
     this.state.credits -= cost;
     this.state.inventory.push({ itemId, durability: item.durability ?? null });
     this.save();
@@ -206,19 +274,250 @@ export default class RPGManager {
   }
 
   getMissionCreditCost(unitIds) {
-    if (!Array.isArray(unitIds) || unitIds.some(id => !this.getOwnedUnit(id))) return null;
-    return unitIds.reduce((total, unitId) => {
+    if (!Array.isArray(unitIds) || unitIds.some(entry => {
+      const id = typeof entry === 'string' ? entry : entry?.unitId;
+      return !this.getUnitDefinition(id) || !this.getOwnedUnit(id);
+    })) return null;
+    return unitIds.reduce((total, entry) => {
+      const unitId = typeof entry === 'string' ? entry : entry?.unitId;
       const forceCost = Number(this.getUnitDefinition(unitId)?.cost);
       return total + (Number.isFinite(forceCost) ? forceCost * 4.2 * 0.25 : 0);
     }, 0);
   }
 
-  chargeMissionCosts(unitIds) {
-    const cost = this.getMissionCreditCost(unitIds);
-    if (!Number.isFinite(cost) || this.state.credits < cost) return false;
-    this.state.credits -= cost;
+  getMissionCostBreakdown(deployments = []) {
+    const wages = this.getMissionCreditCost(deployments);
+    if (wages === null) return { wages: null, maintenance: 0, total: null };
+    let maintenance = 0;
+    const maintenanceRates = { COMMON: 0.1, UNCOMMON: 0.08, RARE: 0.06, EXOTIC: 0.04, LEGENDARY: 0.03 };
+    deployments.forEach(entry => {
+      const equipmentIds = new Set();
+      if (!entry || typeof entry === 'string') {
+        const owned = this.getOwnedUnit(typeof entry === 'string' ? entry : '');
+        ['left', 'right', 'utility'].forEach(slot => { if (owned?.equipped?.[slot]) equipmentIds.add(owned.equipped[slot]); });
+        (owned?.augments || []).forEach(id => equipmentIds.add(id));
+      } else {
+        ['left', 'right', 'utility'].forEach(slot => { if (entry.equipped?.[slot]) equipmentIds.add(entry.equipped[slot]); });
+        (entry.augments || []).forEach(id => equipmentIds.add(id));
+        if (!entry.equipped && entry.equipment) {
+          (entry.equipment.weapons || []).filter(Boolean).forEach(item => equipmentIds.add(item.id));
+          if (entry.equipment.utility?.id) equipmentIds.add(entry.equipment.utility.id);
+        }
+      }
+      equipmentIds.forEach(id => {
+        const item = this.getItemDefinition(id);
+        const cost = Number(item?.cost);
+        const rate = maintenanceRates[item?.rarity] || 0;
+        if (Number.isFinite(cost) && cost > 0) maintenance += cost * rate;
+      });
+    });
+    return { wages, maintenance, total: wages + maintenance };
+  }
+
+  chargeMissionCosts(deployments) {
+    const breakdown = this.getMissionCostBreakdown(deployments);
+    if (!Number.isFinite(breakdown.total)) return false;
+    this.state.credits -= breakdown.total;
+    this.state.lastMissionCostBreakdown = { ...breakdown };
     this.save();
     return true;
+  }
+
+  getBaselineUpkeep() {
+    const value = Object.values(this.state.units).reduce((total, owned) => {
+      const unit = this.getUnitDefinition(owned.id);
+      if (!unit) return total;
+      const creditValue = Number(unit.cost) * 4.2;
+      const stars = Math.max(0, Math.min(5, Number(owned.stars ?? owned.rank) || 0));
+      return total + creditValue * (1 + 0.2 * stars);
+    }, 0);
+    return value * 0.025;
+  }
+
+  getTurnUpkeepBreakdown(deployments = []) {
+    const mission = this.getMissionCostBreakdown(deployments);
+    return {
+      baseline: this.getBaselineUpkeep(),
+      conditionalInterest: this.state.credits < 0 ? -this.state.credits * 0.1 : 0,
+      allegiance: this.state.allegiance ? this.getBaselineUpkeep() * 2 : 0,
+      mission,
+      lastMission: this.state.lastMissionCostBreakdown,
+    };
+  }
+
+  ensureStoreState() {
+    if (!this.state.storeState || typeof this.state.storeState !== 'object') {
+      this.state.storeState = { creditStock: null, creditStockVersion: 2, creditRestocksThisTurn: 0, factionStores: {} };
+    }
+    this.state.storeState.factionStores ||= {};
+    return this.state.storeState;
+  }
+
+  getCreditStoreStock(random = Math.random) {
+    const stores = this.ensureStoreState();
+    if (!stores.creditStock || stores.creditStockVersion < 2) {
+      stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
+      stores.creditStockVersion = 2;
+    }
+    this.save();
+    return stores.creditStock;
+  }
+
+  getCreditStoreRestockCost() {
+    return 15 + 10 * Math.max(0, Number(this.ensureStoreState().creditRestocksThisTurn) || 0);
+  }
+
+  restockCreditStore(random = Math.random) {
+    if (this.state.credits < 0) return false;
+    const cost = this.getCreditStoreRestockCost();
+    if (!this.spendCredits(cost)) return false;
+    const stores = this.ensureStoreState();
+    stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
+    stores.creditStockVersion = 2;
+    stores.creditRestocksThisTurn += 1;
+    this.save();
+    return true;
+  }
+
+  getFactionStoreStock(faction, random = Math.random) {
+    const canonicalFaction = factionDataName(faction);
+    const stores = this.ensureStoreState();
+    const factionState = stores.factionStores[canonicalFaction] ||= { stock: null, manualRestocked: false };
+    if (!factionState.stock) factionState.stock = generateFactionStoreStock({
+      faction, equipment: this.equipment, units: this.units,
+      influence: getFactionInfluence(this.state.totalInfluence, faction), random,
+    });
+    this.save();
+    return factionState.stock;
+  }
+
+  getFactionStoreDiscount(faction) {
+    return getFactionInfluence(this.state.totalInfluence, faction) >= 50 ? 0.1 : 0;
+  }
+
+  getFactionStoreUnitPrice(faction, unitId) {
+    const unit = this.getUnitDefinition(unitId);
+    const factionKey = factionDataName(faction);
+    if (!unit || unit.faction !== factionKey || !this.getFactionStoreStock(faction).units.includes(unitId)) return null;
+    return Number(unit.cost) * (1 - this.getFactionStoreDiscount(faction));
+  }
+
+  purchaseFactionUnit(faction, unitId) {
+    const price = this.getFactionStoreUnitPrice(faction, unitId);
+    const influence = getFactionInfluence(this.state.influence, faction);
+    if (!Number.isFinite(price) || price < 0 || influence < price) return false;
+    const influenceKeys = this.getFactionInfluenceKeys(faction);
+    const influenceKey = influenceKeys.find(key => Number.isFinite(Number(this.state.influence[key])))
+      || factionDataName(faction);
+    this.state.influence[influenceKey] = influence - price;
+    this.addUnitCopy(unitId);
+    this.save();
+    return true;
+  }
+
+  getFactionStoreEquipmentPrice(faction, itemId) {
+    const item = this.getItemDefinition(itemId);
+    const stock = this.getFactionStoreStock(faction);
+    const inStock = stock.equipment.includes(itemId) || stock.augments.includes(itemId);
+    if (!item || !inStock || item.faction !== factionDataName(faction)) return null;
+    const cost = Number(item.cost);
+    return Number.isFinite(cost) && cost >= 0
+      ? cost * (1 - this.getFactionStoreDiscount(faction)) : null;
+  }
+
+  purchaseFactionEquipment(faction, itemId) {
+    const item = this.getItemDefinition(itemId);
+    const price = this.getFactionStoreEquipmentPrice(faction, itemId);
+    const influence = getFactionInfluence(this.state.influence, faction);
+    if (!item || !Number.isFinite(price) || this.getItemInstance(itemId) || influence < price) return false;
+    const key = this.getFactionInfluenceKeys(faction).find(candidate => Number.isFinite(Number(this.state.influence[candidate])))
+      || factionDataName(faction);
+    this.state.influence[key] = influence - price;
+    this.state.inventory.push({ itemId, durability: item.durability ?? null });
+    this.save();
+    return true;
+  }
+
+  restockFactionStore(faction, random = Math.random) {
+    const canonicalFaction = factionDataName(faction);
+    if (!FACTIONS.includes(faction) && !FACTIONS.includes(displayFactionName(faction))) return false;
+    const influence = getFactionInfluence(this.state.influence, faction);
+    const stores = this.ensureStoreState();
+    const factionState = stores.factionStores[canonicalFaction] ||= { stock: null, manualRestocked: false };
+    if (factionState.manualRestocked || influence < 2) return false;
+    const influenceKeys = this.getFactionInfluenceKeys(faction);
+    const influenceKey = influenceKeys.find(key => Number.isFinite(Number(this.state.influence[key]))) || canonicalFaction;
+    this.state.influence[influenceKey] = influence - 2;
+    factionState.stock = generateFactionStoreStock({ faction, equipment: this.equipment, units: this.units, influence: getFactionInfluence(this.state.totalInfluence, faction), random });
+    factionState.manualRestocked = true;
+    this.save();
+    return true;
+  }
+
+  getFactionInfluenceKeys(faction) {
+    const name = displayFactionName(faction);
+    const keys = [name, factionDataName(name)];
+    if (name === 'Laisung Collective') keys.push('Nihon Collective');
+    if (name === 'Underworld Network') keys.push('Sewer Rats');
+    return [...new Set(keys)];
+  }
+
+  setAllegiance(faction) {
+    const name = displayFactionName(faction);
+    if (!FACTIONS.includes(name) || this.state.credits < 0) return false;
+    this.state.allegiance = name;
+    this.save();
+    return true;
+  }
+
+  advanceTurn(missionId, random = Math.random) {
+    if (!missionId || this.state.lastAdvancedMissionId === missionId) return null;
+    const interest = this.state.credits < 0 ? -this.state.credits * 0.1 : 0;
+    this.state.credits -= interest;
+    const baseline = this.getBaselineUpkeep();
+    this.state.credits -= baseline;
+    let allegianceCost = 0;
+    let allegianceCancelled = false;
+    const allegianceFaction = this.state.allegiance;
+    if (allegianceFaction) {
+      const due = baseline * 2;
+      if (this.state.credits < 0 || this.state.credits < due) {
+        this.state.allegiance = null;
+        allegianceCancelled = true;
+      } else {
+        allegianceCost = due;
+        this.state.credits -= due;
+        const key = this.getFactionInfluenceKeys(allegianceFaction).find(candidate => Number.isFinite(Number(this.state.influence[candidate])))
+          || factionDataName(allegianceFaction);
+        const gain = due;
+        this.state.influence[key] = (Number(this.state.influence[key]) || 0) + gain;
+        this.state.totalInfluence[key] = (Number(this.state.totalInfluence[key]) || 0) + gain;
+      }
+    }
+    this.state.lastTurnCreditChange = this.state.credits - Number(this.state.turnStartCredits ?? this.state.credits);
+    this.state.lastTurnUpkeep = { interest, baseline, allegiance: allegianceCost, allegianceFaction, allegianceCancelled };
+    this.state.lastAllegiancePayment = { faction: allegianceFaction, cost: allegianceCost, influence: allegianceCost, cancelled: allegianceCancelled };
+    this.state.turnNumber += 1;
+    this.state.turnStartCredits = this.state.credits;
+    this.state.lastAdvancedMissionId = missionId;
+    this.state.availableMissions = createMissionBoard({
+      turnNumber: this.state.turnNumber, units: this.units, equipment: this.equipment, random,
+    });
+    const stores = this.ensureStoreState();
+    stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
+    stores.creditStockVersion = 2;
+    stores.creditRestocksThisTurn = 0;
+    FACTIONS.forEach(faction => {
+      const dataFaction = factionDataName(faction);
+      const factionState = stores.factionStores[dataFaction] ||= { stock: null, manualRestocked: false };
+      factionState.stock = generateFactionStoreStock({
+        faction, equipment: this.equipment, units: this.units,
+        influence: getFactionInfluence(this.state.totalInfluence, faction), random,
+      });
+      factionState.manualRestocked = false;
+    });
+    this.save();
+    return { creditChange: this.state.lastTurnCreditChange, interest, baseline };
   }
 
   setMissionRoster(unitIds) {
@@ -239,6 +538,20 @@ export default class RPGManager {
 
   getOwnedUnit(unitId) {
     return this.state.units[unitId];
+  }
+
+  getOwnedUnitFrom(units, unitId) { return Boolean(units?.[unitId]); }
+
+  setDeploymentLineup(unitIds) {
+    if (!Array.isArray(unitIds) || unitIds.length > 5) return false;
+    const lineup = Array.from({ length: 5 }, (_, index) => {
+      const id = unitIds[index] || null;
+      return id && this.getUnitDefinition(id) && this.getOwnedUnit(id) ? id : null;
+    });
+    if (unitIds.some(id => id && (!this.getUnitDefinition(id) || !this.getOwnedUnit(id)))) return false;
+    this.state.deploymentLineup = lineup;
+    this.save();
+    return true;
   }
 
   getUnitDefinition(unitId) {
@@ -425,8 +738,12 @@ export default class RPGManager {
         unlocked,
         completed,
         limit,
-        paths: tier.paths.map(path => ({
+        paths: tier.paths.map(path => {
+          const randomStat = progression.randomStat || progression.towerData?.randomStat || null;
+          const randomStatLabel = path.id === 'random_path' ? describeRandomStat(randomStat) : null;
+          return {
           ...path,
+          ...(randomStatLabel ? { name: randomStatLabel, description: `This deployed unit's stored random stat roll: ${randomStatLabel}.` } : {}),
           level: Number(progress[path.id] || 0),
           selected: state.selected?.includes(path.id) || false,
           abandoned: state.abandoned?.includes(path.id) || false,
@@ -434,7 +751,7 @@ export default class RPGManager {
             && Number(progress[path.id] || 0) < this.getPathProgressLimit(path)
             && !state.abandoned?.includes(path.id)
             && (!state.selected?.length || state.selected.includes(path.id) || state.selected.length < limit),
-        })),
+        };}),
       };
     });
   }
@@ -464,16 +781,31 @@ export default class RPGManager {
   equip(unitId, itemId, slot = 'utility') {
     const owned = this.getOwnedUnit(unitId);
     const item = this.getItemDefinition(itemId);
-    const validHandSlot = slot === 'left' || slot === 'right';
     if (!owned || !item || (!this.isPermanentlyAvailable(item) && !this.getItemInstance(itemId))) return false;
-    if (slot === 'utility' ? item.type !== 'utility' : !validHandSlot || item.type !== 'weapon') return false;
+    let equipSlot = slot;
+    if (equipSlot === 'auto') {
+      if (item.type !== 'weapon') return false;
+      if (item.hands === 1) {
+        const { left, right } = owned.equipped || {};
+        if (right === itemId && !left) equipSlot = 'left';
+        else if (!right) equipSlot = 'right';
+        else if (!left) equipSlot = 'left';
+        else return false;
+      } else {
+        // Preserve the existing two-handed behavior: an accepted two-handed
+        // weapon occupies both hands, with right as the default hand choice.
+        equipSlot = 'right';
+      }
+    }
+    const validHandSlot = equipSlot === 'left' || equipSlot === 'right';
+    if (equipSlot === 'utility' ? item.type !== 'utility' : !validHandSlot || item.type !== 'weapon') return false;
     if (item.type === 'weapon' && ((item.hands !== 1 && item.hands !== 2) || !this.isWeaponAllowed(unitId, item))) return false;
 
     const equipped = { ...owned.equipped };
-    if (slot === 'utility') {
+    if (equipSlot === 'utility') {
       equipped.utility = itemId;
     } else {
-      const currentHandItem = this.getItemDefinition(equipped[slot]);
+      const currentHandItem = this.getItemDefinition(equipped[equipSlot]);
       if (currentHandItem?.hands === 2) {
         equipped.left = null;
         equipped.right = null;
@@ -482,7 +814,7 @@ export default class RPGManager {
         equipped.left = itemId;
         equipped.right = itemId;
       } else {
-        equipped[slot] = itemId;
+        equipped[equipSlot] = itemId;
       }
     }
     owned.equipped = equipped;
@@ -494,8 +826,8 @@ export default class RPGManager {
     const owned = this.getOwnedUnit(unitId);
     const augment = this.equipment.augments[itemId];
     if (!owned || !augment || augment.type !== 'augment'
-      || !this.getItemInstance(itemId) || owned.augments?.includes(itemId)) return false;
-    owned.augments = [...(owned.augments || []), itemId];
+      || !this.getItemInstance(itemId) || (owned.augments || []).length > 0) return false;
+    owned.augments = [itemId];
     this.save();
     return true;
   }
@@ -503,6 +835,16 @@ export default class RPGManager {
   unequipAugment(unitId, itemId) {
     const owned = this.getOwnedUnit(unitId);
     if (!owned?.augments?.includes(itemId)) return false;
+    const augment = this.equipment.augments[itemId];
+    const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EXOTIC', 'LEGENDARY'];
+    if (rarityOrder.indexOf(String(augment?.rarity || 'COMMON').toUpperCase()) < rarityOrder.indexOf('RARE')) {
+      const instance = this.getItemInstance(itemId);
+      if (instance) this.state.inventory = this.state.inventory.filter(candidate => candidate !== instance);
+    } else {
+      const cost = Number(augment?.cost);
+      if (!Number.isFinite(cost) || this.state.credits < cost) return false;
+      this.state.credits -= cost;
+    }
     owned.augments = owned.augments.filter(augmentId => augmentId !== itemId);
     this.save();
     return true;
@@ -625,10 +967,7 @@ export default class RPGManager {
 
     const paths = this.getPathTiers(unitId).flatMap(tier => tier.paths);
     const randomPath = paths.find(path => path.id === 'random_path');
-    let randomStat = progression.randomStat || null;
-    if (randomPath && Number(selectedPaths[randomPath.id] || 0) > 0 && !randomStat) {
-      randomStat = clone(RANDOM_PATH_BONUSES[Math.floor(Math.random() * RANDOM_PATH_BONUSES.length)]);
-    }
+    const randomStat = progression.randomStat || progression.towerData?.randomStat || null;
     if (randomPath && Number(selectedPaths[randomPath.id] || 0) > 0 && randomStat) {
       const bonus = clone(randomStat);
       if (bonus.stat === 'range') bonus.value *= this.scene.mapManager?.getCurrentMap?.()?.tileSize || 1;
@@ -711,7 +1050,8 @@ export default class RPGManager {
       - ((Number(definition.baseStats[skillName]) || 0) + (Number(primary?.[skillName]) || 0));
     const damageEffectMultiplier = preEffectStats.damage
       ? stats.damage / preEffectStats.damage
-      : 1;
+      : 1 + (Number(selectedPaths.damage) > 0 ? 0.05 : 0)
+        + (Number(selectedPaths.damage) >= 3 ? 0.1 : 0);
     const rangeEffectMultiplier = preEffectStats.range
       ? stats.range / preEffectStats.range
       : 1;
@@ -737,6 +1077,7 @@ export default class RPGManager {
             ? 1 + Number(definition.passive.value || 0)
             : 1),
           weaponId: weapon.id,
+          weaponHands: weapon.hands,
           specialProperties: [...(stats.specialProperties || []), ...(weapon.specialProperties || [])],
           statusEffects: clone(weapon.statusEffects || stats.statusEffects || []),
           ammo: clone(weapon.ammo || stats.ammo),
@@ -770,6 +1111,7 @@ export default class RPGManager {
       return {
         ...clone(stats),
         weaponId: weapon.id,
+        weaponHands: weapon.hands,
         specialProperties: [...(stats.specialProperties || []), ...(weapon.specialProperties || [])],
         statusEffects: clone(weapon.statusEffects || stats.statusEffects || []),
         damage: (Number(weapon.damage) || 0) * quality * veterancyMultiplier * damageEffectMultiplier
@@ -827,6 +1169,53 @@ export default class RPGManager {
       });
       return profile;
     });
+    const aoeRadiusBonusTiles = Number(stats.specialProperties
+      .find(property => property.property === 'aoeRadiusBonus')?.value || 0);
+    const aoeDamageBonus = Number(stats.specialProperties
+      .find(property => property.property === 'aoeDamageBonus')?.value || 0);
+    if (aoeRadiusBonusTiles > 0 && Number.isFinite(tileSize)) {
+      stats.weaponAttacks.forEach(profile => {
+        if (Number(profile.aoeRadius) > 0) profile.aoeRadius += aoeRadiusBonusTiles * tileSize;
+      });
+    }
+    if (aoeDamageBonus > 0) {
+      stats.weaponAttacks.forEach(profile => {
+        if (Number(profile.aoeRadius) > 0) profile.aoeDamageMultiplier *= 1 + aoeDamageBonus;
+      });
+    }
+    const inherentAttacks = (definition.inherentAttacks || []).map((attack, index) => ({
+      ...clone(stats),
+      ...clone(attack),
+      weaponId: `inherent-${index}`,
+      damage: Number(attack.damage || 0) * veterancyMultiplier * damageEffectMultiplier,
+      range: Number(attack.range || 0) * Number(tileSize || 0) * rangeEffectMultiplier,
+      attackSpeed: (1000 / Math.max(0.01, Number(attack.attacksPerSecond || 1)))
+        / veterancyMultiplier / Math.max(0.01, 1 + (Number(stats.attackSpeedModifier) || 0))
+        / Math.max(0.01, 1 + (Number(stats.rangedSkill) || 0)),
+      criticalChance: Number(attack.criticalChance || 0),
+      criticalModifier: Number(attack.criticalModifier || 1),
+      ammo: { requiresAmmo: false, consumesPerAttack: 0, unlimited: true },
+      reloadSpeed: undefined,
+      aoeRadius: Number(attack.aoeRadius || 0) * Number(tileSize || 0) * aoeEffectMultiplier,
+      aoeDamageMultiplier: Number(attack.aoeDamageMultiplier ?? 1),
+      projectileSpeed: getProjectileSpeed('fired', tileSize) || stats.projectileSpeed,
+      projectileAsset: attack.projectileAsset || 'basic',
+      specialProperties: [...(stats.specialProperties || [])],
+      statusEffects: clone(stats.statusEffects || []),
+      attackType: 'ranged',
+      damageType: attack.damageType || 'Physical',
+    }));
+    if (aoeRadiusBonusTiles > 0 && Number.isFinite(tileSize)) {
+      inherentAttacks.forEach(profile => {
+        if (Number(profile.aoeRadius) > 0) profile.aoeRadius += aoeRadiusBonusTiles * tileSize;
+      });
+    }
+    if (aoeDamageBonus > 0) {
+      inherentAttacks.forEach(profile => {
+        if (Number(profile.aoeRadius) > 0) profile.aoeDamageMultiplier *= 1 + aoeDamageBonus;
+      });
+    }
+    stats.weaponAttacks.push(...inherentAttacks);
     if (stats.statusDuration !== 1) {
       stats.statusEffects = (stats.statusEffects || []).map(effect => ({
         ...effect,

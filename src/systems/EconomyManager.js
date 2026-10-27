@@ -6,11 +6,21 @@ export default class EconomyManager {
     this.scene = scene;
 
     // Player resources
-    this.lives = window.GAME_SETTINGS.PLAYER.lives;
-    this.allowedEscapes = window.GAME_SETTINGS.PLAYER.allowedEscapes || 10;
+    const mission = scene.registry?.get?.('selectedMission');
+    const missionParameters = mission?.parameters || {};
+    this.allowedEscapes = Number(missionParameters.protectedZoneToughness) || window.GAME_SETTINGS.PLAYER.allowedEscapes || 10;
+    this.lives = this.allowedEscapes;
     this.escapes = 0;
     this.money = scene.rpgManager?.state?.credits ?? window.GAME_SETTINGS.PLAYER.money;
-    this.force = Number(window.GAME_SETTINGS.PLAYER.force || 0);
+    this.force = Number(window.GAME_SETTINGS.PLAYER.force || 0) * (Number(missionParameters.startingForceMultiplier) || 1);
+    const persistedTilePoints = scene.registry?.get?.('missionSpecialTilePoints');
+    const difficultyLevel = Math.max(1, ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'INSANE'].indexOf(mission?.difficulty) + 1);
+    const initialTilePoints = mission?.missionType === 'BARRICADE' ? 9 * difficultyLevel : 5;
+    this.tilePurchasePoints = Number.isInteger(persistedTilePoints) && persistedTilePoints >= 0
+      ? persistedTilePoints : initialTilePoints;
+    if (!Number.isInteger(persistedTilePoints) || persistedTilePoints < 0) {
+      scene.registry?.set?.('missionSpecialTilePoints', this.tilePurchasePoints);
+    }
     this.score = 0;
 
     // Track stats for scoring
@@ -33,6 +43,14 @@ export default class EconomyManager {
    */
   getMoney() {
     return this.money;
+  }
+
+  spendSpecialTilePoint() {
+    if (!Number.isInteger(this.tilePurchasePoints) || this.tilePurchasePoints < 1) return false;
+    this.tilePurchasePoints -= 1;
+    this.scene.registry?.set?.('missionSpecialTilePoints', this.tilePurchasePoints);
+    this.scene.events?.emit?.('specialTilePointsChanged', this.tilePurchasePoints);
+    return true;
   }
 
   getForce() {

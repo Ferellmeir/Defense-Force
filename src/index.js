@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import MapSelectScene from './scenes/MapSelectScene.js';
+import MainHubScene from './scenes/MainHubScene.js';
+import FactionScene from './scenes/FactionScene.js';
 import StoreScene from './scenes/StoreScene.js';
 import DeploymentScene from './scenes/DeploymentScene.js';
 import GameScene from './scenes/GameScene.js';
@@ -14,6 +16,7 @@ import enemiesConfig from './assets/config/enemies.json';
 const config = {
   type: Phaser.AUTO,
   parent: 'game-container',
+  dom: { createContainer: true },
   width: 1280,
   height: 720,
   scale: {
@@ -28,7 +31,7 @@ const config = {
       debug: false,
     },
   },
-  scene: [MapSelectScene, StoreScene, DeploymentScene, GameScene, UIScene],
+  scene: [MainHubScene, FactionScene, MapSelectScene, StoreScene, DeploymentScene, GameScene, UIScene],
 };
 
 // Global game settings

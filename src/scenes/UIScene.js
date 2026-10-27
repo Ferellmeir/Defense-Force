@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { fmt } from '../utils/formatNumber.js';
+import { getAvailableVeterancyPathOptions, getVeterancyPathButtonY } from '../systems/veterancyPathChoices.js';
 import UIButton from '../helpers/UIButton.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
 import { getPriceColor, setButtonAffordability } from '../helpers/UIHelpers.js';
 import { CLEAR_TILE_FORCE_COST } from '../systems/tileClearing.js';
 import { preloadUiAssets } from '../helpers/uiAssets.js';
+import { displayFactionName } from '../utils/factions.js';
 
 // General dialog style config for confirmation dialogs
 const DIALOG_STYLE = {
@@ -219,8 +221,9 @@ export default class UIScene extends Phaser.Scene {
 
     const gameScene = this.scene.get('GameScene');
     const progressionText = this.add.text(20, 245, '', {
-      fontSize: '15px',
+      fontSize: '12px',
       fill: '#d8e6ef',
+      lineSpacing: -2,
       wordWrap: { width: panelWidth - 40 },
     });
     this.towerInfoPanel.add(progressionText);
@@ -240,9 +243,11 @@ export default class UIScene extends Phaser.Scene {
     });
     progressionText.setText(lines.join('\n'));
 
-    let pathButtonY = 430;
-    pathTiers.forEach(tier => tier.paths.forEach(path => {
-      if (!path.available) return;
+    // Leave the full progression summary unobscured, then render every
+    // available path choice in its own row. The previous y=430 start
+    // overlapped the multi-tier path summary and hid the last choice.
+    getAvailableVeterancyPathOptions(pathTiers).forEach(({ path }, index) => {
+      const pathButtonY = getVeterancyPathButtonY(index);
       const pathButton = this.add.text(20, pathButtonY, `Choose ${path.name} (Force ${fmt(tower.getVeterancyForceCost(), 'floor')})`, {
         fontSize: '14px',
         fill: '#ffffff',
@@ -258,8 +263,7 @@ export default class UIScene extends Phaser.Scene {
         this.showTowerInfo(tower);
       });
       this.towerInfoPanel.add(pathButton);
-      pathButtonY += 30;
-    }));
+    });
 
     // Upgrade info
     const canUpgrade = false;
@@ -468,12 +472,20 @@ export default class UIScene extends Phaser.Scene {
     this.createTowerButtons();
     // Create wave control button
     this.createWaveButton();
+    this.createSpecialTileControls();
     // Create message display
     this.createMessageDisplay();
     // Create UI buttons (mute, return home)
     this.createUIButtons();
     // Listen for game events
     this.setupEventListeners();
+    const missionRestrictions = gameScene.registry.get('missionRestriction') || [];
+    const mission = gameScene.registry.get('selectedMission');
+    if (mission?.missionType === 'DYNAMIC_ENGAGEMENT' && missionRestrictions[0]?.label) {
+      this.showMessage(`Map ${Number(gameScene.registry.get('missionMapIndex') || 0) + 1}/3 restriction: ${missionRestrictions[0].label}`, 5000);
+    } else if (missionRestrictions.length) {
+      this.showMessage(`Mission restriction: ${missionRestrictions.map(restriction => restriction.label).join(', ')}`, 5000);
+    }
     this.updateTowerButtonStates();
     // Always show lower bar
     this.lowerBarVisible = true;
@@ -707,6 +719,41 @@ export default class UIScene extends Phaser.Scene {
     });
   }
 
+  createSpecialTileControls() {
+    const gameScene = this.scene.get('GameScene');
+    this.specialTileTypeButton = this.add.rectangle(818, 54, 216, 24, 0x1b3548, 0.96)
+      .setStrokeStyle(1, 0x58c6dd).setInteractive({ useHandCursor: true });
+    this.specialTileTypeText = this.add.text(826, 57, '', { fontSize: '12px', color: '#e5f8ff' });
+    this.specialTilePlacementButton = this.add.rectangle(1042, 54, 177, 24, 0x25465a, 0.96)
+      .setStrokeStyle(1, 0x58c6dd).setInteractive({ useHandCursor: true });
+    this.specialTilePlacementText = this.add.text(1054, 57, '', { fontSize: '12px', color: '#e5f8ff' });
+    this.uiContainer.add([
+      this.specialTileTypeButton, this.specialTileTypeText,
+      this.specialTilePlacementButton, this.specialTilePlacementText,
+    ]);
+    this.specialTileTypeButton.on('pointerdown', () => gameScene.cycleSpecialTileType());
+    this.specialTilePlacementButton.on('pointerdown', () => {
+      gameScene.setSpecialTilePlacementMode(!gameScene.specialTilePlacementMode);
+    });
+    this.updateSpecialTileControls();
+  }
+
+  updateSpecialTileControls() {
+    const gameScene = this.scene.get('GameScene');
+    if (!this.specialTileTypeText || !gameScene) return;
+    const state = gameScene.getSpecialTileState();
+    const title = String(state.type || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+    this.specialTileTypeText.setText(`Tile: ${title}  |  ${fmt(state.points)} pts`);
+    this.specialTilePlacementText.setText(state.placementMode ? 'Place tile: ON' : 'Place tile: OFF');
+    this.specialTilePlacementButton.setFillStyle(state.placementMode ? 0x287348 : 0x25465a);
+    if (state.points > 0 && !gameScene.isGameOver) this.specialTilePlacementButton.setInteractive({ useHandCursor: true });
+    else this.specialTilePlacementButton.disableInteractive();
+    if (gameScene.isGameOver) {
+      this.specialTileTypeButton.disableInteractive();
+      this.specialTilePlacementButton.disableInteractive();
+    }
+  }
+
   createWaveButton() {
     const buttonWidth = 220;
     const buttonHeight = 60;
@@ -761,6 +808,10 @@ export default class UIScene extends Phaser.Scene {
       if (audioManager) audioManager.playSound('ui_click');
       this.scene.get('GameScene').waveManager.startNextWave('manual');
     });
+    if (this.scene.get('GameScene').selectedMission?.missionType === 'GAUNTLET') {
+      this.waveButton.disableInteractive().setVisible(false);
+      this.waveButtonText.setVisible(false);
+    }
   }
 
   hideRPGPanel() {
@@ -848,7 +899,7 @@ export default class UIScene extends Phaser.Scene {
     ].filter(Boolean).join(' | ');
     const stars = Math.max(0, Math.min(5, Math.floor(Number(owned.stars) || 0)));
     const copyProgress = stars < 5 ? `${fmt(Math.floor(Number(owned.extraCopies) || 0), 'floor')}/${stars + 1} copies` : 'MAX copies';
-    panel.add(this.add.text(20, detailY, `${definition.name} (${unitId}) | ${definition.faction}\n${fmt(stars, 'floor')}★, ${copyProgress}\nDeployment baseline: ${effectiveStats}\nPassive: ${definition.passive?.name || 'None'} (${formatEffects(definition.passive?.effects)})${stars === 5 ? '\nExtra passive unlocked.' : ''}\nAugments: ${augmentNames}`, { fontSize: '14px', fill: '#ffffff', wordWrap: { width: 560 } }));
+    panel.add(this.add.text(20, detailY, `${definition.name} (${unitId}) | ${displayFactionName(definition.faction)}\n${fmt(stars, 'floor')}★, ${copyProgress}\nDeployment baseline: ${effectiveStats}\nPassive: ${definition.passive?.name || 'None'} (${formatEffects(definition.passive?.effects)})${stars === 5 ? '\nExtra passive unlocked.' : ''}\nAugments: ${augmentNames}`, { fontSize: '14px', fill: '#ffffff', wordWrap: { width: 560 } }));
 
     const equipmentText = (slot, itemId) => {
       const item = manager.getItemDefinition(itemId);
@@ -1014,6 +1065,7 @@ export default class UIScene extends Phaser.Scene {
 
     // Listen for game over
     this.scene.get('GameScene').events.on('gameOver', this.onGameOver, this);
+    this.scene.get('GameScene').events.on('specialTileStateChanged', this.updateSpecialTileControls, this);
 
     // Listen for messages
     this.scene
@@ -1211,6 +1263,8 @@ export default class UIScene extends Phaser.Scene {
 
   onGameOver(data) {
     this.isGameStopped = true;
+    this.specialTileTypeButton?.disableInteractive();
+    this.specialTilePlacementButton?.disableInteractive();
     this.hideTowerInfo();
     // Disable wave button
     this.setWaveButtonEnabled(false);
@@ -1231,7 +1285,7 @@ export default class UIScene extends Phaser.Scene {
     if (victory) {
       rows.push(`Credits: +${fmt(Number(result.credits) || 0, 'floor')}`);
       rows.push(result.influence
-        ? `${result.faction} influence: +${fmt(result.influence)}`
+        ? `${displayFactionName(result.faction)} influence: +${fmt(result.influence)}`
         : 'Faction influence: not awarded; mission faction is not assigned');
       rows.push(`Equipment found: ${itemNames(result.equipmentGained)}`);
       rows.push(`Units found: ${unitNames(result.unitsGained)}`);
@@ -1256,7 +1310,7 @@ export default class UIScene extends Phaser.Scene {
       : null;
     const button = this.add.rectangle(centerX, this.scale.height - 135, 320, 64, 0x187044).setDepth(1002).setInteractive({ useHandCursor: true });
     const returnIcon = this.add.image(centerX - 105, this.scale.height - 135, 'ui_restart').setDisplaySize(34, 34).setDepth(1003);
-    const buttonText = this.add.text(centerX + 18, this.scale.height - 135, 'Return to map', {
+    const buttonText = this.add.text(centerX + 18, this.scale.height - 135, 'Return to Hub · advance turn', {
       fontSize: '24px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5).setDepth(1003);
     button.on('pointerdown', () => this.scene.get('GameScene').returnToMap());
@@ -1333,6 +1387,7 @@ export default class UIScene extends Phaser.Scene {
 
     const gameScene = this.scene.get('GameScene');
     this.pauseControl = this.add.text(875, 28, 'PAUSE', { fontSize: '16px', fill: '#ffffff', backgroundColor: '#27445c', padding: 8 }).setInteractive();
+    if (gameScene.selectedMission?.missionType === 'GAUNTLET') this.pauseControl.disableInteractive().setVisible(false);
     this.pauseControl.on('pointerdown', () => {
       gameScene.isPaused = !gameScene.isPaused;
       gameScene.time.timeScale = gameScene.isPaused ? 0 : gameScene.gameSpeed;
@@ -1389,12 +1444,12 @@ export default class UIScene extends Phaser.Scene {
         // Create confirmation dialog
         if (!this.mainMenuDialog) {
           this.mainMenuDialog = new ConfirmationDialog(this, {
-            message: 'Are you sure you want to\nquit to the main menu?\n\nAll progress will be lost.',
+            message: 'Are you sure you want to\nleave the current mission and return to the hub?',
             onConfirm: () => {
-              // Return to map select scene
+              // Return to the campaign hub without advancing an unfinished mission.
               this.scene.stop('GameScene');
               this.scene.stop('UIScene');
-              this.scene.start('MapSelectScene');
+              this.scene.start('MainHubScene');
             },
             ...DIALOG_STYLE
           });
@@ -1473,6 +1528,7 @@ export default class UIScene extends Phaser.Scene {
       gameScene.events.off('waveReadyForNext', this.onWaveReadyForNext, this);
       gameScene.events.off('waveCountdown', this.onWaveCountdown, this);
       gameScene.events.off('gameOver', this.onGameOver, this);
+      gameScene.events.off('specialTileStateChanged', this.updateSpecialTileControls, this);
       gameScene.events.off('showMessage', this.showMessage, this);
       gameScene.events.off('showTowerInfo', this.showTowerInfo, this);
       gameScene.events.off('gameStart');

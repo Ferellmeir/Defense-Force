@@ -127,6 +127,65 @@ test('equip is atomic and a two-handed weapon occupies both hand slots', () => {
   assert.equal(manager.saveCount, savesBeforeInvalidEquip);
 });
 
+test('automatic one-handed assignment uses right first and the left hand for a second equip', () => {
+  const manager = createRpgFixture();
+  const owned = manager.getOwnedUnit('UNIT');
+  owned.equipped = { left: null, right: null, utility: null };
+  manager.equipment.items.pistol.hands = 1;
+  manager.state.inventory.push({ itemId: 'pistol' });
+
+  assert.equal(manager.equip('UNIT', 'pistol', 'auto'), true);
+  assert.deepEqual(owned.equipped, { left: null, right: 'pistol', utility: null });
+  assert.equal(manager.equip('UNIT', 'pistol', 'auto'), true);
+  assert.deepEqual(owned.equipped, { left: 'pistol', right: 'pistol', utility: null });
+});
+
+test('automatic first one-handed weapon uses left when the right hand is already occupied', () => {
+  const manager = createRpgFixture();
+  const owned = manager.getOwnedUnit('UNIT');
+  owned.equipped = { left: null, right: 'sidearm', utility: null };
+  manager.equipment.items.pistol.hands = 1;
+  manager.state.inventory.push({ itemId: 'pistol' });
+
+  assert.equal(manager.equip('UNIT', 'pistol', 'auto'), true);
+  assert.deepEqual(owned.equipped, { left: 'pistol', right: 'sidearm', utility: null });
+});
+
+test('explicit hand selection takes priority over automatic placement', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.pistol.hands = 1;
+  manager.state.inventory.push({ itemId: 'pistol' });
+  const owned = manager.getOwnedUnit('UNIT');
+
+  assert.equal(manager.equip('UNIT', 'pistol', 'right'), true);
+  assert.deepEqual(owned.equipped, { left: 'sidearm', right: 'pistol', utility: 'gear' });
+  assert.equal(manager.equip('UNIT', 'pistol', 'left'), true);
+  assert.deepEqual(owned.equipped, { left: 'pistol', right: 'pistol', utility: 'gear' });
+});
+
+test('automatic one-handed assignment never replaces unrelated items when both hands are occupied', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.pistol.hands = 1;
+  manager.state.inventory.push({ itemId: 'pistol' });
+  const owned = manager.getOwnedUnit('UNIT');
+  owned.equipped.right = 'pistol';
+  const before = JSON.parse(JSON.stringify(owned.equipped));
+
+  assert.equal(manager.equip('UNIT', 'pistol', 'auto'), false);
+  assert.deepEqual(owned.equipped, before);
+});
+
+test('automatic hand placement continues to reject weapon-incompatible units', () => {
+  const manager = createRpgFixture();
+  manager.units.UNIT.weaponRestrictions = ['firearms'];
+  manager.equipment.items.pistol.attackType = 'melee';
+  manager.state.inventory.push({ itemId: 'pistol' });
+  const before = JSON.parse(JSON.stringify(manager.getOwnedUnit('UNIT').equipped));
+
+  assert.equal(manager.equip('UNIT', 'pistol', 'auto'), false);
+  assert.deepEqual(manager.getOwnedUnit('UNIT').equipped, before);
+});
+
 test('mission roster selection is mission-only and rejects unknown or unowned units', () => {
   const manager = createRpgFixture();
   const roster = [];

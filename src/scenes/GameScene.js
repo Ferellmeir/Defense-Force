@@ -5,7 +5,7 @@ import WaveManager from '../systems/WaveManager.js';
 import EconomyManager from '../systems/EconomyManager.js';
 import AudioManager from '../systems/AudioManager.js';
 import MapManager from '../systems/MapManager.js';
-import { generateMissionMap, createMissionSeed } from '../systems/missionGeneration.js';
+import { generateMissionMap, createMissionSeed, SPECIAL_TILE_TYPES } from '../systems/missionGeneration.js';
 import { canClearBlockedTile, clearBlockedTile } from '../systems/tileClearing.js';
 import { createTileClearConfirmationController } from '../systems/tileClearConfirmation.js';
 import Tower from '../entities/Tower.js';
@@ -21,11 +21,13 @@ import TowerManager from '../systems/TowerManager.js';
 import EnemyManager from '../systems/EnemyManager.js';
 import ProjectileManager from '../systems/ProjectileManager.js';
 import RPGManager from '../systems/RPGManager.js';
-import { clearMissionLocalState, transitionToMap } from '../systems/missionFlow.js';
+import { advanceDynamicMissionMap, clearMissionLocalState, getNextDynamicMapIndex, transitionToMap } from '../systems/missionFlow.js';
 import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowFlipX } from '../utils/pathTiles.js';
 import { getBuildingDisplaySize } from '../utils/buildingFootprint.js';
+import { getFactionEnvironment } from '../systems/missionEnvironments.js';
 import { createBattlefieldProjection } from '../utils/battlefieldProjection.js';
 import { getTileInformation } from '../systems/tileInformation.js';
+import { placeSpecialTileOnMap } from '../systems/specialTilePlacement.js';
 import { createTileHoverPopupController } from '../systems/tileHoverPopup.js';
 import {
   BATTLEFIELD_DRAG_THRESHOLD,
@@ -55,6 +57,9 @@ export default class GameScene extends Phaser.Scene {
     this.isReturningFromMission = false;
     this.missionResult = null;
     this.battlefieldPointer = null;
+    this.specialTilePlacementMode = false;
+    this.selectedSpecialTileType = SPECIAL_TILE_TYPES[0];
+    this.dynamicTransitionPending = false;
 
     // Game objects
     this.towerManager = null;
@@ -111,6 +116,7 @@ export default class GameScene extends Phaser.Scene {
     this.load.image('sewer_rat_battlefield_background', 'assets/New/Sewer rat background.png');
     this.load.image('enemy_path_tile', 'assets/New/path 1.png');
     this.load.image('laisung_background', 'assets/New/Laisung background.png');
+    this.load.image('generic_scifi_background', 'assets/images/scify.png');
     this.load.image('laisung_ground_tile', 'assets/New/tile 1 laisung.png');
     this.load.image('laisung_path_tile', 'assets/New/path laisung.png');
     this.load.image('laisung_blocked_1', 'assets/New/blocked 1 laisung.png');
@@ -166,6 +172,9 @@ export default class GameScene extends Phaser.Scene {
     this.gameEnded = false;
     this.isReturningFromMission = false;
     this.missionResult = null;
+    this.specialTilePlacementMode = false;
+    this.selectedSpecialTileType = SPECIAL_TILE_TYPES[0];
+    this.dynamicTransitionPending = false;
     this.game.loop.timeScale = 1;
     this.time.timeScale = 1;
     this.physics.world.timeScale = 1;
@@ -190,7 +199,9 @@ export default class GameScene extends Phaser.Scene {
     this.mapManager.createMaps(this.MAP_KEYS);
 
     // Set current map (use selected map from registry if available)
-    const selectedMap = this.registry.get('selectedMap');
+    this.selectedMission = this.registry.get('selectedMission');
+    this.missionMapIndex = Math.max(0, Number(this.registry.get('missionMapIndex')) || 0);
+    const selectedMap = this.selectedMission?.mapKeys?.[this.missionMapIndex] || this.registry.get('selectedMap');
     if (selectedMap && this.MAP_KEYS.includes(selectedMap)) {
       this.mapManager.setCurrentMap(selectedMap);
     } else {
@@ -199,15 +210,24 @@ export default class GameScene extends Phaser.Scene {
 
     // Generate the battlefield from mission-local seed while retaining the
     // selected map's visual theme and existing placement restrictions.
-    let missionSeed = this.registry.get('missionSeed');
+    let missionSeed = this.selectedMission?.mapSeeds?.[this.missionMapIndex] ?? this.registry.get('missionSeed');
     if (!Number.isInteger(missionSeed)) {
       missionSeed = createMissionSeed();
       this.registry.set('missionSeed', missionSeed);
     }
     this.missionSeed = missionSeed;
+    this.registry.set('missionSeed', missionSeed);
+    this.registry.set('selectedMap', selectedMap && this.MAP_KEYS.includes(selectedMap) ? selectedMap : this.MAP_KEYS[0]);
+    this.registry.set('missionRestriction', this.selectedMission?.restrictionsByMap?.[this.missionMapIndex]
+      || this.selectedMission?.restrictions || []);
+    const missionEnvironment = getFactionEnvironment(this.registry.get('missionFaction'));
+    this.registry.set('missionEnvironmentKey', this.selectedMission?.environmentKey || missionEnvironment.key);
     this.mapManager.currentMap = generateMissionMap(this.mapManager.getCurrentMap(), missionSeed, {
-      difficulty: this.registry.get('selectedDifficulty') || 'EASY',
+      difficulty: this.selectedMission?.missionType === 'DYNAMIC_ENGAGEMENT'
+        ? 'EASY' : this.selectedMission?.difficulty || this.registry.get('selectedDifficulty') || 'EASY',
       faction: this.registry.get('missionFaction'),
+      missionType: this.selectedMission?.missionType,
+      environmentKey: this.registry.get('missionEnvironmentKey'),
     });
 
     // Create map
@@ -222,7 +242,7 @@ export default class GameScene extends Phaser.Scene {
     // Connect to UI scene
     this.scene.launch('UIScene');
     this.events.emit('updateUI', {
-      lives: window.GAME_SETTINGS.PLAYER.lives,
+      lives: this.economyManager.getLives(),
       escapes: 0,
       money: this.economyManager.getMoney(),
       force: this.economyManager.getForce(),
@@ -237,6 +257,9 @@ export default class GameScene extends Phaser.Scene {
     this.towerManager = new TowerManager(this, Tower);
     this.enemyManager = new EnemyManager(this);
     this.projectileManager = new ProjectileManager(this);
+    if (this.selectedMission?.missionType === 'GAUNTLET') this.waveManager.scheduleNextWave();
+    const currentRestriction = this.registry.get('missionRestriction')?.[0]?.label;
+    if (currentRestriction) this.events.emit('showMessage', `Mission restriction: ${currentRestriction}`, 4500);
 
     // Hook cleanup to the 'transitionout' event, which happens BEFORE shutdown
     this.events.off('transitionout', this.cleanup, this);
@@ -271,9 +294,6 @@ export default class GameScene extends Phaser.Scene {
       console.error('No map data loaded!');
       return;
     }
-
-    // Create the base map
-    this.map = this.add.group();
 
     // Map dimensions (in tiles)
     const mapWidth = mapData.width;
@@ -313,8 +333,9 @@ export default class GameScene extends Phaser.Scene {
     };
     this.clampBattlefieldCamera();
     if (this.mapLayer) this.mapLayer.destroy();
-    const isLaisungMission = this.registry.get('missionFaction') === 'Laisung Collective';
-    const backgroundKey = isLaisungMission ? 'laisung_background' : 'sewer_rat_battlefield_background';
+    const missionEnvironment = getFactionEnvironment(this.registry.get('missionFaction'));
+    const backgroundKey = missionEnvironment.backgroundKey;
+    const isLaisungMission = missionEnvironment.key === 'laisung';
     const background = this.add.image(projection.originX, projection.originY, backgroundKey);
     const source = this.textures.get(backgroundKey).getSourceImage();
     const fieldWidth = this.scale.width;
@@ -369,7 +390,6 @@ export default class GameScene extends Phaser.Scene {
         if (!pathTileKeys.has(`${x},${y}`)) {
           const tile = this.add.image(tileCenter.x, tileCenter.y, isLaisungMission ? 'laisung_ground_tile' : `battlefield_tile_${variation}`);
           tile.setDisplaySize(renderedTileSize, renderedTileSize);
-          this.map.add(tile);
           this.mapLayer.add(tile);
         }
 
@@ -383,41 +403,12 @@ export default class GameScene extends Phaser.Scene {
           );
           overlay.setRotation(Math.PI / 4);
           overlay.setDepth(2);
-          this.map.add(overlay);
           this.mapLayer.add(overlay);
         }
 
-        // Overlay/icon for special tiles
-        if (specialTiles[`${x},${y}`]) {
-          let color = 0x00ffff, alpha = 0.3;
-          switch (specialTiles[`${x},${y}`]) {
-            case 'thermal_enhancement': color = 0xff5522; alpha = 0.35; break;
-            case 'snipers_nest': color = 0xffff00; alpha = 0.35; break;
-            case 'toxin_synthesizers': color = 0x44cc44; alpha = 0.35; break;
-            case 'tactical_indoctrination': color = 0x4488ff; alpha = 0.35; break;
-            case 'adaptability_network': color = 0xaa44ff; alpha = 0.35; break;
-            case 'dark_alley': color = 0x333344; alpha = 0.45; break;
-            case 'damage_boost':
-              color = 0xffff00; alpha = 0.35; break;
-            case 'range_boost':
-              color = 0xffff00; alpha = 0.35; break;
-            case 'elevation_high':
-              color = 0x4444ff; alpha = 0.35; break;
-            default:
-              color = 0x00ffff; alpha = 0.3;
-          }
-          const stOverlay = this.add.rectangle(
-            tileCenter.x,
-            tileCenter.y,
-            tileSize * 0.7, tileSize * 0.7,
-            color, alpha
-          );
-          stOverlay.setRotation(Math.PI / 4);
-          stOverlay.setDepth(3);
-          this.map.add(stOverlay);
-          this.mapLayer.add(stOverlay);
-
-        }
+        // Render generated and purchased tiles using one shared palette.
+        const specialType = specialTiles[`${x},${y}`];
+        if (specialType) this.createSpecialTileOverlay(tileCenter, specialType, tileSize);
 
         // Create placement tiles (where towers can be placed)
         if (!restricted.has(`${x},${y}`) && !pathTileKeys.has(`${x},${y}`)) {
@@ -437,7 +428,6 @@ export default class GameScene extends Phaser.Scene {
             blocked.setDisplaySize(tileSize, tileSize);
             blocked.setAlpha(0.9);
             placementTile.blockedOverlay = blocked;
-            this.map.add(blocked);
             this.mapLayer.add(blocked);
           }
 
@@ -472,7 +462,6 @@ export default class GameScene extends Phaser.Scene {
             ? ((x + y) % 2 ? 'laisung_unclearable_1' : 'laisung_unclearable_2')
             : 'blocked_terrain');
           blocked.setDisplaySize(tileSize, tileSize);
-          this.map.add(blocked);
           this.mapLayer.add(blocked);
         }
       }
@@ -494,7 +483,6 @@ export default class GameScene extends Phaser.Scene {
       }
       building.setDisplaySize(displaySize.width, displaySize.height);
       building.setDepth(center.y);
-      this.map.add(building);
     }
 
     // Set up path for enemies to follow (use first path for now)
@@ -512,7 +500,6 @@ export default class GameScene extends Phaser.Scene {
       );
       const pathTile = this.add.image(center.x, center.y, isLaisungMission ? 'laisung_path_tile' : 'enemy_path_tile');
       pathTile.setDisplaySize(renderedTileSize, renderedTileSize).setFlipX(directionFlipX);
-      this.map.add(pathTile);
       this.mapLayer.add(pathTile);
     }
     this.pathManager.setPath(
@@ -522,6 +509,7 @@ export default class GameScene extends Phaser.Scene {
         terrain: terrainModifiers[`${coord.x},${coord.y}`],
       }))
     );
+    if (this.selectedMission?.missionType === 'BARRICADE') this.createBarricade(mainPath, projection, tileSize);
     this.createTileInformationPopup(mapData);
     this.setupBattlefieldNavigation();
   }
@@ -764,8 +752,64 @@ export default class GameScene extends Phaser.Scene {
     this.clampBattlefieldCamera();
   }
 
+  createSpecialTileOverlay(position, type, tileSize) {
+    const colors = {
+      thermal_enhancement: [0xff5522, 0.35], snipers_nest: [0xffff00, 0.35],
+      toxin_synthesizers: [0x44cc44, 0.35], tactical_indoctrination: [0x4488ff, 0.35],
+      adaptability_network: [0xaa44ff, 0.35], dark_alley: [0x333344, 0.45],
+    };
+    const [color, alpha] = colors[type] || [0x00ffff, 0.3];
+    const overlay = this.add.rectangle(position.x, position.y, tileSize * 0.7, tileSize * 0.7, color, alpha);
+    overlay.setRotation(Math.PI / 4).setDepth(3);
+    this.mapLayer.add(overlay);
+    return overlay;
+  }
+
+  getSpecialTileState() {
+    return { type: this.selectedSpecialTileType, points: this.economyManager?.tilePurchasePoints || 0, placementMode: this.specialTilePlacementMode };
+  }
+
+  cycleSpecialTileType() {
+    const current = SPECIAL_TILE_TYPES.indexOf(this.selectedSpecialTileType);
+    this.selectedSpecialTileType = SPECIAL_TILE_TYPES[(current + 1) % SPECIAL_TILE_TYPES.length];
+    this.events.emit('specialTileStateChanged', this.getSpecialTileState());
+    return this.selectedSpecialTileType;
+  }
+
+  setSpecialTilePlacementMode(enabled) {
+    this.specialTilePlacementMode = Boolean(enabled) && !this.isGameOver
+      && Number(this.economyManager?.tilePurchasePoints) > 0;
+    this.events.emit('specialTileStateChanged', this.getSpecialTileState());
+    return this.specialTilePlacementMode;
+  }
+
+  placeSpecialTile(tile) {
+    if (this.isGameOver || !this.specialTilePlacementMode) return false;
+    if (!this.economyManager || this.economyManager.tilePurchasePoints < 1) {
+      this.setSpecialTilePlacementMode(false);
+      this.events.emit('showMessage', 'No special-tile points remain.', 1800);
+      return false;
+    }
+    const map = this.mapManager.getCurrentMap();
+    const position = tile?.gridPosition;
+    const specialTile = placeSpecialTileOnMap(map, position, this.selectedSpecialTileType, this.economyManager);
+    if (!specialTile) {
+      this.events.emit('showMessage', 'Special tiles must be 1 to 3 tiles from the path; Dark Alley must be adjacent. Choose a clear, unused tile.', 2600);
+      return false;
+    }
+    const overlay = this.createSpecialTileOverlay({ x: tile.x, y: tile.y }, specialTile.type, map.tileSize);
+    tile.specialType = specialTile.type;
+    tile.specialOverlay = overlay;
+    this.tileInfoController?.refresh();
+    if (this.economyManager.tilePurchasePoints < 1) this.specialTilePlacementMode = false;
+    this.events.emit('specialTileStateChanged', this.getSpecialTileState());
+    this.events.emit('showMessage', `${specialTile.type.replaceAll('_', ' ')} placed.`, 1500);
+    return true;
+  }
+
   handleTilePlacement(tile) {
     if (this.tileClearConfirmation?.isOpen()) return;
+    if (this.specialTilePlacementMode) { this.placeSpecialTile(tile); return; }
     const gridPosition = tile.gridPosition;
     if (tile.isBlockedClearable) {
       const map = this.mapManager.getCurrentMap();
@@ -849,54 +893,71 @@ export default class GameScene extends Phaser.Scene {
   }
 
   setupInputHandlers() {
-    // Pause game
-    this.input.keyboard.on('keydown-P', () => {
-      this.isPaused = !this.isPaused;
-      this.time.timeScale = this.isPaused ? 0 : this.gameSpeed;
-      this.events.emit('gamePaused', this.isPaused);
-    });
+    this.input.keyboard.off('keydown-P', this.handlePauseInput, this);
+    this.input.keyboard.off('keydown-F', this.handleSpeedInput, this);
+    this.input.keyboard.off('keydown-SPACE', this.handleNextWaveInput, this);
+    this.input.keyboard.off('keydown-V', this.handleVictoryInput, this);
+    this.events.off('waveCompleted', this.handleMissionWaveCompleted, this);
+    this.events.off('waveStarted', this.handleMissionWaveStarted, this);
+    this.input.keyboard.on('keydown-P', this.handlePauseInput, this);
+    this.input.keyboard.on('keydown-F', this.handleSpeedInput, this);
+    this.input.keyboard.on('keydown-SPACE', this.handleNextWaveInput, this);
+    this.input.keyboard.on('keydown-V', this.handleVictoryInput, this);
+    this.events.on('waveCompleted', this.handleMissionWaveCompleted, this);
+    this.events.on('waveStarted', this.handleMissionWaveStarted, this);
+  }
 
-    this.input.keyboard.on('keydown-F', () => {
-      this.setGameSpeed((this.gameSpeed % 4) + 1);
-    });
+  handlePauseInput() {
+    if (this.selectedMission?.missionType === 'GAUNTLET') return;
+    this.isPaused = !this.isPaused;
+    this.time.timeScale = this.isPaused ? 0 : this.gameSpeed;
+    this.events.emit('gamePaused', this.isPaused);
+  }
 
-    // Start next wave manually
-    this.input.keyboard.on('keydown-SPACE', () => {
-      this.waveManager.startNextWave('manual');
-    });
+  handleSpeedInput() {
+    this.setGameSpeed((this.gameSpeed % 4) + 1);
+  }
 
-    // Force victory for testing (press V key)
-    this.input.keyboard.on('keydown-V', () => {
-      console.log('V key pressed - forcing victory');
-      this.gameOver(true);
-    });
+  handleNextWaveInput() {
+    if (this.selectedMission?.missionType === 'GAUNTLET') return;
+    this.waveManager.startNextWave('manual');
+  }
 
-    // Show wave end indicator and check for victory when a wave is completed
-    this.events.on('waveCompleted', (waveNumber) => {
-      console.log(
-        `Wave ${waveNumber} completed. GameScene.currentWave=${
-          this.currentWave
-        }, WaveManager.currentWave=${this.waveManager.getCurrentWave()}`
-      );
-      // Robust, single-responsibility victory check
-      const totalWaves = this.waveManager.getTotalWaves();
-      if (waveNumber >= totalWaves && !this.isGameOver && !this.gameEnded) {
-        console.log(
-          `Victory condition met: waveNumber=${waveNumber}, totalWaves=${totalWaves}`
-        );
-        this.gameOver(true);
-      }
-    });
+  handleVictoryInput() {
+    console.log('V key pressed - forcing victory');
+    this.gameOver(true);
+  }
 
-    // Listen for wave started events to update current wave
-    this.events.on('waveStarted', (waveNumber) => {
-      this.currentWave = waveNumber;
-      console.log(
-        `Wave ${waveNumber} started. GameScene.currentWave=${
-          this.currentWave
-        }, WaveManager.currentWave=${this.waveManager.getCurrentWave()}`
-      );
-    });
+  handleMissionWaveCompleted(waveNumber) {
+    const totalWaves = this.waveManager.getTotalWaves();
+    if (waveNumber >= totalWaves && !this.isGameOver && !this.gameEnded) this.gameOver(true);
+  }
+
+  handleMissionWaveStarted(waveNumber) {
+    this.currentWave = waveNumber;
+  }
+
+  createBarricade(path, projection, tileSize) {
+    const pathIndex = Math.max(1, path.length - 2);
+    const routePoint = path[pathIndex];
+    const layerPoint = projection.worldToLayer((routePoint.x + 0.5) * tileSize, (routePoint.y + 0.5) * tileSize);
+    const worldPoint = projection.worldToScreen((routePoint.x + 0.5) * tileSize, (routePoint.y + 0.5) * tileSize);
+    const health = Number(this.selectedMission.parameters?.barricadeHealth) || 100;
+    const wall = this.add.rectangle(layerPoint.x, layerPoint.y, tileSize * 0.8, tileSize * 0.28, 0x8c5c37, 0.96)
+      .setStrokeStyle(2, 0xe8be75).setRotation(Math.PI / 4).setDepth(6);
+    this.mapLayer.add(wall);
+    const healthText = this.add.text(worldPoint.x, worldPoint.y - 25, `BARRICADE ${health}`, { fontSize: '13px', color: '#ffe27a', backgroundColor: '#101923', padding: { x: 4, y: 2 } })
+      .setOrigin(0.5).setDepth(900);
+    this.barricade = {
+      health, maxHealth: health, pathIndex, wall, healthText,
+      takeDamage: amount => {
+        if (this.barricade.health <= 0) return;
+        this.barricade.health = Math.max(0, this.barricade.health - Math.max(0, Number(amount) || 0));
+        this.barricade.healthText?.setText(this.barricade.health > 0 ? `BARRICADE ${fmt(this.barricade.health)}` : 'BARRICADE DESTROYED');
+        if (this.barricade.health === 0) this.barricade.wall?.setVisible(false);
+        this.events.emit('barricadeHealthChanged', this.barricade.health, this.barricade.maxHealth);
+      },
+    };
   }
 
   setGameSpeed(speed) {
@@ -1034,18 +1095,39 @@ export default class GameScene extends Phaser.Scene {
     this.gameEnded = true;
     this.tileInfoController?.leave();
 
+    const nextIndex = victory ? getNextDynamicMapIndex(this.selectedMission, this.missionMapIndex) : null;
+    if (nextIndex !== null) {
+      if (this.dynamicTransitionPending) return;
+      this.dynamicTransitionPending = true;
+      const missionId = this.selectedMission.id;
+      const fromIndex = this.missionMapIndex;
+      this.events.emit('showMessage', `Map ${fromIndex + 1} cleared. Preparing map ${nextIndex + 1} of ${this.selectedMission.mapKeys.length}...`, 2300);
+      this.time.delayedCall(2300, () => {
+        if (!this.dynamicTransitionPending || this.registry.get('missionRunId') !== missionId
+          || Number(this.registry.get('missionMapIndex')) !== fromIndex) return;
+        this.dynamicTransitionPending = false;
+        // UIScene listens to this scene's events; recreate it for each new map
+        // so it receives the final map's settlement event and result display.
+        advanceDynamicMissionMap({
+          mission: this.selectedMission,
+          mapIndex: fromIndex,
+          registry: this.registry,
+          stopUIScene: () => this.scene.stop('UIScene'),
+          restartGameScene: () => this.scene.restart(),
+        });
+      });
+      return;
+    }
+
     const result = this.rpgManager.settleMission({
       missionId: this.registry.get('missionRunId'),
       victory,
       difficulty: this.registry.get('selectedDifficulty') || 'EASY',
-      unitIds: this.registry.get('missionRoster') || [],
+      unitIds: (this.registry.get('missionRoster') || []).map(entry => typeof entry === 'string' ? entry : entry?.unitId).filter(Boolean),
       missionFaction: this.registry.get('missionFaction') || null,
+      rewardMultiplier: this.selectedMission?.rewardMultiplier || 1,
     });
     this.missionResult = result;
-    if (result) {
-      this.registry.set('storeStock', null);
-      this.registry.set('storeRestockCost', 15);
-    }
 
     // Emit game over event
     this.events.emit('gameOver', {
@@ -1065,13 +1147,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   returnToMap() {
+    if (!this.isGameOver || this.isReturningFromMission) return false;
+    if (this.missionResult?.missionId) this.rpgManager.advanceTurn(this.missionResult.missionId);
     return transitionToMap({
       isGameOver: this.isGameOver,
       isReturning: this.isReturningFromMission,
       setReturning: () => { this.isReturningFromMission = true; },
       stopAudio: () => this.audioManager?.stopAll(),
       stopUIScene: () => this.scene.stop('UIScene'),
-      startMap: () => this.scene.start('MapSelectScene'),
+      startMap: () => this.scene.start('MainHubScene'),
     });
   }
 
@@ -1194,6 +1278,12 @@ export default class GameScene extends Phaser.Scene {
 
   // --- Add cleanup method for robust restart ---
   cleanup() {
+    this.input?.keyboard?.off('keydown-P', this.handlePauseInput, this);
+    this.input?.keyboard?.off('keydown-F', this.handleSpeedInput, this);
+    this.input?.keyboard?.off('keydown-SPACE', this.handleNextWaveInput, this);
+    this.input?.keyboard?.off('keydown-V', this.handleVictoryInput, this);
+    this.events.off('waveCompleted', this.handleMissionWaveCompleted, this);
+    this.events.off('waveStarted', this.handleMissionWaveStarted, this);
     this.tileClearConfirmation?.destroy();
     this.tileClearConfirmation = null;
     this.hideTileClearDialog();
@@ -1210,36 +1300,20 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('transitionout', this.cleanup, this);
     this.events.off('shutdown', this.cleanup, this);
     this.waveManager?.cleanup();
-    console.log('[GameScene.cleanup] called. this.towerManager:', this.towerManager);
-    if (this.towerManager) {
-      console.log('[GameScene.cleanup] this.towerManager.towerGroup:', this.towerManager.towerGroup);
-    }
-    if (this.enemyManager) {
-      console.log('[GameScene.cleanup] this.enemyManager.enemyGroup:', this.enemyManager.enemyGroup);
-    }
-    if (this.projectileManager) {
-      console.log('[GameScene.cleanup] this.projectileManager.projectileGroup:', this.projectileManager.projectileGroup);
-    }
-    // Clear all managers (defensive: check for group existence)
-    if (this.towerManager && this.towerManager.towerGroup) {
-      this.towerManager.clear();
-    }
-    if (this.enemyManager && this.enemyManager.enemyGroup) {
-      this.enemyManager.clear();
-    }
-    if (this.projectileManager && this.projectileManager.projectileGroup) {
-      this.projectileManager.clear();
-    }
+    // Clear managers even if Phaser already destroyed their Groups during
+    // UpdateList shutdown; each manager handles that state idempotently.
+    this.towerManager?.clear();
+    this.enemyManager?.clear();
+    this.projectileManager?.clear();
     // Remove placement tiles
     if (this.placementTiles) {
       this.placementTiles.forEach(tile => tile && tile.destroy && tile.destroy());
       this.placementTiles = [];
     }
-    // Remove map overlays/group
-    if (this.map && this.map.clear) {
-      this.map.clear(true, true);
-      this.map = null;
-    }
+    // Scene display list owns battlefield objects. Do not retain a second
+    // Phaser Group as a cleanup ledger: UpdateList destroys Groups before
+    // scene shutdown listeners, which leaves Group.children undefined.
+    this.map = null;
     if (this.mapLayer) {
       this.mapLayer.destroy();
       this.mapLayer = null;

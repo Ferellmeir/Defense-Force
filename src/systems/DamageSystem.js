@@ -1,5 +1,10 @@
 import { withTileChanceBonus } from './combatChance.js';
 import { TILE_EFFECTS } from './tileEffects.js';
+import { getCurrentMissionRestrictions, isDebuffBanned } from './missionRestrictions.js';
+
+function isMissionDebuffBanned(attack, type) {
+  return isDebuffBanned(type, getCurrentMissionRestrictions(attack.sourceTower?.scene?.registry));
+}
 
 const DAMAGE_TYPES = {
   physical: 'Physical',
@@ -23,6 +28,12 @@ export function applyDamage(enemy, attack) {
   const markedMultiplier = marked ? 1 + Number(marked.damageTakenMultiplier || 0) : 1;
   const vulnerability = (enemy.data.vulnerabilities?.[type] || 1) * markedMultiplier;
   let damage = Math.max(0, Number(attack.damage) || 0);
+  const missingHealthBonus = attack.missingHealthDamageChance;
+  if (missingHealthBonus && attack.primaryTarget === enemy
+    && Math.random() < withTileChanceBonus(missingHealthBonus.value, attack)) {
+    const missingHealthPercent = Math.max(0, 1 - enemy.health / Math.max(1, enemy.maxHealth)) * 100;
+    damage *= 1 + missingHealthPercent * Number(missingHealthBonus.perMissingHealthPercent || 0);
+  }
   const firstHit = properties.find(property => property.property === 'firstHitDamage');
   if (firstHit && attack.sourceTower && !attack.sourceTower.firstHitTargets?.has(enemy)) {
     damage *= 1 + Number(firstHit.value || 0);
@@ -36,6 +47,10 @@ export function applyDamage(enemy, attack) {
     + (Number(attack.sourceTower?.nextCritChanceBonus) || 0), attack);
   const criticalModifier = Number(attack.criticalModifier) || 1;
   const isCritical = criticalChance > 0 && Math.random() < criticalChance;
+  const exposedCritBonus = properties.find(property => property.property === 'exposedCriticalDamageBonus');
+  const exposedCritMultiplier = isCritical && exposedCritBonus
+    && (enemy.statusEffects || []).some(effect => effect.type === 'exposed')
+    ? 1 + Number(exposedCritBonus.value || 0) : 1;
   const critChain = properties.find(property => property.property === 'nextCritChance');
   if (attack.sourceTower) {
     attack.sourceTower.nextCritChanceBonus = isCritical
@@ -45,7 +60,8 @@ export function applyDamage(enemy, attack) {
     if (isCritical && nextPenetration) attack.sourceTower.nextAttackPenetrationBonus = Number(nextPenetration.value || 0);
     else if (Number(attack.sourceTower.nextAttackPenetrationBonus) > 0) attack.sourceTower.nextAttackPenetrationBonus = 0;
   }
-  const amount = Math.max(1, isCritical ? vulnerableDamage * criticalModifier : vulnerableDamage);
+  const amount = Math.max(1, (isCritical ? vulnerableDamage * criticalModifier : vulnerableDamage)
+    * exposedCritMultiplier);
 
   if (isCritical && attack.sourceTower) {
     const critBoost = properties.find(property => property.property === 'critDamageBoost');
@@ -57,12 +73,12 @@ export function applyDamage(enemy, attack) {
     const meleeStun = properties.find(property => property.property === 'meleeStunChance');
     const darkAlleyBonus = attack.specialTileType === 'dark_alley'
       ? TILE_EFFECTS.dark_alley.meleeStunChance : 0;
-    if ((meleeStun || darkAlleyBonus) && Math.random() < withTileChanceBonus(Number(meleeStun?.value || 0) + darkAlleyBonus, attack)) {
+    if (!isMissionDebuffBanned(attack, 'stun') && (meleeStun || darkAlleyBonus) && Math.random() < withTileChanceBonus(Number(meleeStun?.value || 0) + darkAlleyBonus, attack)) {
       enemy.applyStatusEffect({ type: 'stun', duration: attack.specialTileType === 'dark_alley'
         ? TILE_EFFECTS.dark_alley.stunDurationMs : Number(meleeStun.duration || 0) });
     }
     const meleeBleed = properties.find(property => property.property === 'meleeBleedChance');
-    if (meleeBleed && Math.random() < withTileChanceBonus(meleeBleed.value || meleeBleed.chance, attack)) {
+    if (!isMissionDebuffBanned(attack, 'bleed') && meleeBleed && Math.random() < withTileChanceBonus(meleeBleed.value || meleeBleed.chance, attack)) {
       enemy.applyStatusEffect({
         type: 'bleed',
         totalDamage: Math.max(0, enemy.health) * Number(meleeBleed.healthFraction || 0),
@@ -73,7 +89,7 @@ export function applyDamage(enemy, attack) {
     }
   }
   const energyStun = properties.find(property => property.property === 'energyStunChance');
-  if (enemy.health > 0 && type === 'Energy' && energyStun
+  if (enemy.health > 0 && type === 'Energy' && !isMissionDebuffBanned(attack, 'stun') && energyStun
     && Math.random() < withTileChanceBonus(energyStun.value, attack)) {
     enemy.applyStatusEffect({ type: 'stun', duration: Number(energyStun.duration || 0) });
   }
@@ -84,15 +100,15 @@ export function applyDamage(enemy, attack) {
   }
 
   const expose = properties.find(property => property.property === 'exposeChance');
-  if (enemy.health > 0 && expose && Math.random() < withTileChanceBonus(expose.value, attack)) {
+  if (enemy.health > 0 && !isMissionDebuffBanned(attack, 'exposed') && expose && Math.random() < withTileChanceBonus(expose.value, attack)) {
     enemy.applyStatusEffect({ type: 'exposed', damageTakenMultiplier: Number(expose.damageTaken || 0), duration: Number(expose.duration || 0) });
   }
   const slow = properties.find(property => property.property === 'slowChance');
-  if (enemy.health > 0 && slow && Math.random() < withTileChanceBonus(slow.value, attack)) {
+  if (enemy.health > 0 && !isMissionDebuffBanned(attack, 'slow') && slow && Math.random() < withTileChanceBonus(slow.value, attack)) {
     enemy.applySlowEffect(Number(slow.factor || 0.65), Number(slow.duration || 5000));
   }
   const bleed = properties.find(property => property.property === 'bleedChance');
-  if (enemy.health > 0 && bleed && Math.random() < withTileChanceBonus(bleed.value, attack)) {
+  if (enemy.health > 0 && !isMissionDebuffBanned(attack, 'bleed') && bleed && Math.random() < withTileChanceBonus(bleed.value, attack)) {
     enemy.applyStatusEffect({ type: 'bleed', totalDamage: Math.max(0, enemy.health) * Number(bleed.healthFraction || 0.1), duration: Number(bleed.duration || 5000), interval: 500, sourceTower: attack.sourceTower });
   }
 
@@ -141,7 +157,7 @@ export function applyDamage(enemy, attack) {
     }
   }
   const refreshChance = properties.find(property => property.property === 'refreshStatusChance');
-  (attack.statusEffects || []).filter(effect => effect.type !== 'fire').forEach(sourceEffect => {
+  (attack.statusEffects || []).filter(effect => effect.type !== 'fire' && !isMissionDebuffBanned(attack, effect.type)).forEach(sourceEffect => {
     const effect = { ...sourceEffect };
     if (effect.type === 'poison') {
       effect.duration = Number(effect.duration || 5000);
@@ -158,7 +174,7 @@ export function applyDamage(enemy, attack) {
   });
   const toxinChance = withTileChanceBonus(attack.specialTileType === 'toxin_synthesizers'
     ? TILE_EFFECTS.toxin_synthesizers.poisonChance : 0, attack);
-  if (enemy.health > 0 && toxinChance > 0 && Math.random() < toxinChance) {
+  if (enemy.health > 0 && !isMissionDebuffBanned(attack, 'poison') && toxinChance > 0 && Math.random() < toxinChance) {
     enemy.applyStatusEffect({ type: 'poison', duration: 5000, interval: 1000, totalDamage: Number(enemy.maxHealth || 0) * 0.05, sourceTower: attack.sourceTower });
   }
   return { amount, isCritical, effectiveArmor };
