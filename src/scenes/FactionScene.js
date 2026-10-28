@@ -5,8 +5,9 @@ import { displayFactionName, factionDataName, getFactionInfluence, FACTIONS } fr
 import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
+import { FACTION_PAGE_BACKGROUNDS, getCoverDisplaySize } from '../utils/screenBackgrounds.js';
 
-const IMPLEMENTED = new Set(['Laisung Collective', 'Underworld Network']);
+const IMPLEMENTED = new Set(Object.keys(FACTION_PAGE_BACKGROUNDS));
 
 export default class FactionScene extends Phaser.Scene {
   constructor() { super('FactionScene'); }
@@ -15,9 +16,9 @@ export default class FactionScene extends Phaser.Scene {
 
   preload() {
     preloadUiAssets(this);
-    const background = this.faction === 'Laisung Collective' ? 'Laisung background.png' : 'Sewer rat background.png';
-    this.backgroundKey = this.faction === 'Laisung Collective' ? 'faction_bg_laisung' : 'faction_bg_underworld';
-    if (IMPLEMENTED.has(this.faction) && !this.textures.exists(this.backgroundKey)) this.load.image(this.backgroundKey, `assets/New/${background}`);
+    this.backgroundKey = `faction_page_bg_${this.faction.replaceAll(' ', '_').toLowerCase()}`;
+    const background = FACTION_PAGE_BACKGROUNDS[this.faction];
+    if (background && !this.textures.exists(this.backgroundKey)) this.load.image(this.backgroundKey, `assets/images/${background}`);
     const dataFaction = factionDataName(this.faction);
     Object.values(window.GAME_SETTINGS.UNITS).filter(unit => unit.faction === dataFaction && unit.characterArt)
       .forEach(unit => { if (!this.textures.exists(`faction_unit_${unit.id}`)) this.load.image(`faction_unit_${unit.id}`, `assets/${unit.asset || unit.id}.png`); });
@@ -29,9 +30,12 @@ export default class FactionScene extends Phaser.Scene {
       return;
     }
     this.rpg = new RPGManager(this);
-    this.add.rectangle(640, 360, 1280, 720, 0x101923, 0.98);
-    if (this.textures.exists(this.backgroundKey)) this.add.image(640, 360, this.backgroundKey).setDisplaySize(1280, 720).setAlpha(0.32);
-    this.add.rectangle(640, 360, 1280, 720, 0x101923, 0.58);
+    if (this.textures.exists(this.backgroundKey)) {
+      const source = this.textures.get(this.backgroundKey).getSourceImage();
+      const size = getCoverDisplaySize(source.width, source.height, this.scale.width, this.scale.height);
+      this.add.image(this.scale.width / 2, this.scale.height / 2, this.backgroundKey).setDisplaySize(size.width, size.height);
+    }
+    this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.56);
     this.add.image(640, 360, 'ui_panel_9').setDisplaySize(1280, 720).setAlpha(0.14);
     this.add.text(26, 18, this.faction.toUpperCase(), { fontSize: '29px', color: '#ffe27a', fontStyle: 'bold' });
     this.addButton(1120, 20, 'Back to Hub', () => this.scene.start('MainHubScene'));
@@ -39,7 +43,9 @@ export default class FactionScene extends Phaser.Scene {
     this.totalInfluence = getFactionInfluence(this.rpg.state.totalInfluence, this.faction);
     const introduction = this.faction === 'Underworld Network'
       ? 'A human faction/community. Current game data associates Underworld Network units and faction equipment with this community.'
-      : 'Current game data associates several units and weapons with the Laisung Collective.';
+      : this.faction === 'Strozek Supremacy'
+        ? 'Current game data associates Strozek Supremacy units and faction equipment with this faction.'
+        : 'Current game data associates several units and weapons with the Laisung Collective.';
     this.add.text(28, 66, introduction, { fontSize: '14px', color: '#d8e6ef', wordWrap: { width: 1200 } });
     this.add.text(28, 96, `Influence: ${fmt(this.influence)} available · ${fmt(this.totalInfluence)} lifetime · ${this.totalInfluence >= 50 ? '10% store discount' : `${fmt(50 - this.totalInfluence)} lifetime influence to 10% discount`}`, { fontSize: '14px', color: '#c6d5df' });
     const allegiance = this.rpg.state.allegiance;

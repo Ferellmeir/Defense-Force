@@ -4,6 +4,7 @@ import { displayFactionName, FACTIONS, getFactionInfluence } from '../utils/fact
 import { rarityFrame, preloadUiAssets } from '../helpers/uiAssets.js';
 import RPGManager from '../systems/RPGManager.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
+import { FACTION_PAGE_BACKGROUNDS } from '../utils/screenBackgrounds.js';
 
 const COLORS = { gold: '#ffe27a', pale: '#d8e6ef', muted: '#91a4b5', teal: 0x245b66, panel: 0x142536 };
 
@@ -370,7 +371,7 @@ export default class MainHubScene extends Phaser.Scene {
     const labels = [
       { text: 'Settings', enabled: false },
       { text: 'Missions', enabled: true, action: () => this.scene.start('MapSelectScene') },
-      ...FACTIONS.map(faction => ({ text: faction, enabled: ['Laisung Collective', 'Underworld Network'].includes(faction), action: () => {
+      ...FACTIONS.map(faction => ({ text: faction, enabled: Boolean(FACTION_PAGE_BACKGROUNDS[faction]), action: () => {
         this.registry.set('factionPage', faction);
         this.scene.start('FactionScene', { faction });
       } })),
