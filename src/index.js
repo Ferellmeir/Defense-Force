@@ -11,6 +11,7 @@ import towersConfig from './assets/config/towers.json';
 import unitsConfig from './assets/config/units.json';
 import equipmentConfig from './assets/config/equipment.json';
 import enemiesConfig from './assets/config/enemies.json';
+import { attachSceneDiagnostics, reportPhaserRuntime } from './utils/runtimeDiagnostics.js';
 
 // Game configuration
 const config = {
@@ -33,6 +34,7 @@ const config = {
   },
   scene: [MainHubScene, FactionScene, MapSelectScene, StoreScene, DeploymentScene, GameScene, UIScene],
 };
+attachSceneDiagnostics(config.scene);
 
 // Global game settings
 window.GAME_SETTINGS = {
@@ -98,9 +100,12 @@ window.GAME_SETTINGS = {
 
 // Initialize the game after configuration is available to scene preload hooks.
 const game = new Phaser.Game(config);
+window.__towerDefenseGame = game;
+game.events.once(Phaser.Core.Events.READY, () => reportPhaserRuntime(game, 'game-ready'));
+window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-1-second'), 1000);
+window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-5-seconds'), 5000);
 
 // Temporary read-only browser diagnostic for comparing rendering state between browsers.
-window.__towerDefenseGame = game;
 window.inspectFirstLancer = () => {
   const gameScene = game.scene.getScene('GameScene');
   const towerManager = gameScene?.towerManager;

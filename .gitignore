@@ -7,6 +7,10 @@
 /dist
 /build
 /release
+/release-rebuilt
+/.launcher-build
+/.launcher-build-final
+/Sci-Fi Tower Defense RPG Launcher.exe
 
 # Development
 .DS_Store

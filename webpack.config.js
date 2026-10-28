@@ -53,6 +53,10 @@ export default {
           from: 'public/assets',
           to: 'assets',
         },
+        {
+          from: 'public/maps',
+          to: 'maps',
+        },
       ],
     }),
   ],

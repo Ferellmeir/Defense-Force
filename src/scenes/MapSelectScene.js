@@ -7,7 +7,7 @@ import { FACTIONS, displayFactionName } from '../utils/factions.js';
 import { MISSION_TYPE_NAMES } from '../systems/missionBoard.js';
 import { getFactionEnvironment } from '../systems/missionEnvironments.js';
 import { getMissionCardBounds, getMissionGridLayout } from '../systems/missionScreenLayout.js';
-import { getCoverDisplaySize, MISSION_SELECTION_BACKGROUND } from '../utils/screenBackgrounds.js';
+import { MISSION_SELECTION_BACKGROUND, useSceneBackground } from '../utils/screenBackgrounds.js';
 
 const COLORS = { gold: '#ffe27a', pale: '#d8e6ef', muted: '#91a4b5' };
 const DIFFICULTY_NAMES = { EASY: '1', NORMAL: '2', HARD: '3', EXPERT: '4', INSANE: '5' };
@@ -17,22 +17,16 @@ export default class MapSelectScene extends Phaser.Scene {
 
   preload() {
     preloadUiAssets(this);
-    if (!this.textures.exists('mission_selection_background')) {
-      this.load.image('mission_selection_background', `assets/images/${MISSION_SELECTION_BACKGROUND}`);
-    }
   }
 
   create() {
+    useSceneBackground(this, `assets/images/${MISSION_SELECTION_BACKGROUND}`);
     import('../systems/AudioManager.js').then(({ default: AudioManager }) => AudioManager.stopGlobalMusic(this, 'bgm'));
     this.rpgManager = new RPGManager(this);
     this.missions = this.rpgManager.getAvailableMissions();
     this.selectedMission = null;
     this.missionLayout = getMissionGridLayout(this.scale.width, this.scale.height);
     this.cameras.main.setBackgroundColor('#101923');
-    const backgroundSource = this.textures.get('mission_selection_background').getSourceImage();
-    const backgroundSize = getCoverDisplaySize(backgroundSource.width, backgroundSource.height, this.scale.width, this.scale.height);
-    this.add.image(this.scale.width / 2, this.scale.height / 2, 'mission_selection_background')
-      .setDisplaySize(backgroundSize.width, backgroundSize.height);
     this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.54);
     this.add.image(this.scale.width / 2, this.scale.height / 2, 'ui_panel_9').setDisplaySize(this.scale.width, this.scale.height).setAlpha(0.16);
     this.add.text(this.scale.width / 2, 27, 'AVAILABLE MISSIONS', { fontSize: '27px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);

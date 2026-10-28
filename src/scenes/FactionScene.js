@@ -5,7 +5,7 @@ import { displayFactionName, factionDataName, getFactionInfluence, FACTIONS } fr
 import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
-import { FACTION_PAGE_BACKGROUNDS, getCoverDisplaySize } from '../utils/screenBackgrounds.js';
+import { FACTION_PAGE_BACKGROUNDS, useSceneBackground } from '../utils/screenBackgrounds.js';
 
 const IMPLEMENTED = new Set(Object.keys(FACTION_PAGE_BACKGROUNDS));
 
@@ -16,9 +16,6 @@ export default class FactionScene extends Phaser.Scene {
 
   preload() {
     preloadUiAssets(this);
-    this.backgroundKey = `faction_page_bg_${this.faction.replaceAll(' ', '_').toLowerCase()}`;
-    const background = FACTION_PAGE_BACKGROUNDS[this.faction];
-    if (background && !this.textures.exists(this.backgroundKey)) this.load.image(this.backgroundKey, `assets/images/${background}`);
     const dataFaction = factionDataName(this.faction);
     Object.values(window.GAME_SETTINGS.UNITS).filter(unit => unit.faction === dataFaction && unit.characterArt)
       .forEach(unit => { if (!this.textures.exists(`faction_unit_${unit.id}`)) this.load.image(`faction_unit_${unit.id}`, `assets/${unit.asset || unit.id}.png`); });
@@ -29,12 +26,8 @@ export default class FactionScene extends Phaser.Scene {
       this.scene.start('MainHubScene');
       return;
     }
+    useSceneBackground(this, `assets/images/${FACTION_PAGE_BACKGROUNDS[this.faction]}`);
     this.rpg = new RPGManager(this);
-    if (this.textures.exists(this.backgroundKey)) {
-      const source = this.textures.get(this.backgroundKey).getSourceImage();
-      const size = getCoverDisplaySize(source.width, source.height, this.scale.width, this.scale.height);
-      this.add.image(this.scale.width / 2, this.scale.height / 2, this.backgroundKey).setDisplaySize(size.width, size.height);
-    }
     this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.56);
     this.add.image(640, 360, 'ui_panel_9').setDisplaySize(1280, 720).setAlpha(0.14);
     this.add.text(26, 18, this.faction.toUpperCase(), { fontSize: '29px', color: '#ffe27a', fontStyle: 'bold' });

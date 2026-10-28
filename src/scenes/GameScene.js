@@ -26,6 +26,7 @@ import { advanceDynamicMissionMap, clearMissionLocalState, getNextDynamicMapInde
 import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowFlipX } from '../utils/pathTiles.js';
 import { getBuildingDisplaySize } from '../utils/buildingFootprint.js';
 import { getFactionEnvironment } from '../systems/missionEnvironments.js';
+import { useSceneBackground } from '../utils/screenBackgrounds.js';
 import { createBattlefieldProjection } from '../utils/battlefieldProjection.js';
 import { getTileInformation } from '../systems/tileInformation.js';
 import { placeSpecialTileOnMap } from '../systems/specialTilePlacement.js';
@@ -269,6 +270,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.once('shutdown', this.cleanup, this);
     this.events.off('gamePaused', this.handleTileInformationPause, this);
     this.events.on('gamePaused', this.handleTileInformationPause, this);
+    useSceneBackground(this);
   }
 
   update(time, delta) {
@@ -318,6 +320,9 @@ export default class GameScene extends Phaser.Scene {
       height: this.scale.height - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT,
     };
     camera.setViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+    // Battlefield tile art has transparent edges; use a neutral camera clear
+    // color behind the map instead of the removed full-screen sci-fi image.
+    camera.setBackgroundColor('#101923');
     camera.setZoom(1);
     const mapCorners = [
       projection.worldToScreen(0, 0),
@@ -337,23 +342,25 @@ export default class GameScene extends Phaser.Scene {
     const missionEnvironment = getFactionEnvironment(this.registry.get('missionFaction'));
     const backgroundKey = missionEnvironment.backgroundKey;
     const isLaisungMission = missionEnvironment.key === 'laisung';
-    const background = this.add.image(projection.originX, projection.originY, backgroundKey);
-    const source = this.textures.get(backgroundKey).getSourceImage();
-    const fieldWidth = this.scale.width;
-    const fieldHeight = Math.max(1, this.scale.height - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
-    const fieldAspect = fieldWidth / fieldHeight;
-    const sourceAspect = source.width / source.height;
-    const cropWidth = sourceAspect > fieldAspect ? source.height * fieldAspect : source.width;
-    const cropHeight = sourceAspect > fieldAspect ? source.height : source.width / fieldAspect;
-    background.setCrop(
-      (source.width - cropWidth) / 2,
-      (source.height - cropHeight) / 2,
-      cropWidth,
-      cropHeight
-    );
-    const coverScale = Math.max(fieldWidth / source.width, fieldHeight / source.height);
-    background.setDisplaySize(source.width * coverScale, source.height * coverScale);
-    background.setDepth(-100);
+    if (backgroundKey !== 'generic_scifi_background') {
+      const background = this.add.image(projection.originX, projection.originY, backgroundKey);
+      const source = this.textures.get(backgroundKey).getSourceImage();
+      const fieldWidth = this.scale.width;
+      const fieldHeight = Math.max(1, this.scale.height - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
+      const fieldAspect = fieldWidth / fieldHeight;
+      const sourceAspect = source.width / source.height;
+      const cropWidth = sourceAspect > fieldAspect ? source.height * fieldAspect : source.width;
+      const cropHeight = sourceAspect > fieldAspect ? source.height : source.width / fieldAspect;
+      background.setCrop(
+        (source.width - cropWidth) / 2,
+        (source.height - cropHeight) / 2,
+        cropWidth,
+        cropHeight
+      );
+      const coverScale = Math.max(fieldWidth / source.width, fieldHeight / source.height);
+      background.setDisplaySize(source.width * coverScale, source.height * coverScale);
+      background.setDepth(-100);
+    }
     this.mapLayer = this.add.container(projection.originX, projection.originY);
     // Ground tiles live in an oblique layer; gameplay entities remain outside
     // it so their sprites can stay upright at projected screen positions.

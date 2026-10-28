@@ -1,0 +1,14 @@
+appId: com.scifi.towerdefense.rpg
+productName: Sci-Fi Tower Defense RPG Launcher
+directories:
+  output: .launcher-build-final
+asar: true
+files:
+  - electron/**/*.cjs
+  - package.json
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+artifactName: Sci-Fi Tower Defense RPG Launcher.exe

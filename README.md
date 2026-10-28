@@ -62,7 +62,25 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 ```bash
 npm run build
 ```
-Output will be in the `dist/` directory.
+Output will be in the `dist/` directory. The build also writes a source fingerprint so the packaged launcher can detect stale builds.
+
+### Desktop Launcher
+
+Create the stable launcher once:
+
+```bash
+npm run build:launcher
+```
+
+This creates `Sci-Fi Tower Defense RPG Launcher.exe` in the project folder. Keep the EXE in that folder; you can create a desktop shortcut to it. The launcher reads `dist/` from this project folder and keeps using the existing Electron profile. Keep the project at a stable path so its `file://` save origin stays the same.
+
+After changing game code, assets, or build settings:
+
+```bash
+npm run build
+```
+
+Then open the same launcher EXE. You do not need to rebuild the launcher for game changes. If the source changed after the last build, the launcher will ask you to run `npm run build` instead of opening an older build. Keep the project folder and launcher together; moving the folder requires updating the desktop shortcut.
 
 ---
 
@@ -72,7 +90,10 @@ Output will be in the `dist/` directory.
   Start the development server with hot reload (default: http://localhost:8080).
 
 - **npm run build**  
-  Build the game for production (output in `dist/`).
+  Build the game for production (output in `dist/`) and record the source fingerprint.
+
+- **npm run build:launcher**  
+  Build or replace the stable Windows launcher EXE in the project folder. Run this once, or again only when the launcher itself changes.
 
 - **npm run generate-assets**  
   Run the asset generator script (`src/assets-generator.js`) to create or process game assets.

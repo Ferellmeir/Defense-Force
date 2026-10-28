@@ -6,7 +6,8 @@
     "test": "node --test tests/*.test.js",
     "start": "webpack serve --mode development",
     "desktop": "electron .",
-    "build": "webpack --mode production",
+    "build": "webpack --mode production && node scripts/write-build-info.cjs",
+    "build:launcher": "electron-builder --config electron-builder.launcher.yml --win portable && node scripts/copy-launcher.cjs",
     "package:win": "npm run build && electron-builder --win nsis portable",
     "package:win:installer": "npm run build && electron-builder --win nsis",
     "package:win:portable": "npm run build && electron-builder --win portable",
@@ -54,6 +55,7 @@
     "files": [
       "dist/**/*",
       "electron/main.cjs",
+      "electron/diagnostics-preload.cjs",
       "package.json"
     ],
     "win": {
