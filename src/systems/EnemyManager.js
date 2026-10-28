@@ -8,7 +8,7 @@ export default class EnemyManager {
     this.enemyGroup.getChildren().forEach(enemy => {
       enemy.update(time, delta);
       if (enemy.hasReachedEnd()) {
-        const toughnessDamage = String(enemy.type).toLowerCase() === 'boss' ? 999 : 1;
+        const toughnessDamage = String(enemy.type).toLowerCase() === 'boss' ? 999 : Math.max(1, Number(enemy.data?.countsAs) || 1);
         this.scene.economyManager.registerEscape(toughnessDamage);
         enemy.destroy();
         this.enemyGroup.remove(enemy, true, true);

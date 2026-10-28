@@ -899,7 +899,7 @@ export default class UIScene extends Phaser.Scene {
     ].filter(Boolean).join(' | ');
     const stars = Math.max(0, Math.min(5, Math.floor(Number(owned.stars) || 0)));
     const copyProgress = stars < 5 ? `${fmt(Math.floor(Number(owned.extraCopies) || 0), 'floor')}/${stars + 1} copies` : 'MAX copies';
-    panel.add(this.add.text(20, detailY, `${definition.name} (${unitId}) | ${displayFactionName(definition.faction)}\n${fmt(stars, 'floor')}★, ${copyProgress}\nDeployment baseline: ${effectiveStats}\nPassive: ${definition.passive?.name || 'None'} (${formatEffects(definition.passive?.effects)})${stars === 5 ? '\nExtra passive unlocked.' : ''}\nAugments: ${augmentNames}`, { fontSize: '14px', fill: '#ffffff', wordWrap: { width: 560 } }));
+    panel.add(this.add.text(20, detailY, `${definition.name} (${unitId}) | ${displayFactionName(definition.faction)}\n${fmt(stars, 'floor')}★, ${copyProgress}\nDeployment baseline: ${effectiveStats}\nPassive: ${definition.passive?.name || 'None'}${definition.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''} (${formatEffects(definition.passive?.effects)})${stars === 5 ? '\nExtra passive unlocked.' : ''}\nAugments: ${augmentNames}`, { fontSize: '14px', fill: '#ffffff', wordWrap: { width: 560 } }));
 
     const equipmentText = (slot, itemId) => {
       const item = manager.getItemDefinition(itemId);

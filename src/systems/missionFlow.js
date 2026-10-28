@@ -33,6 +33,7 @@ export function clearMissionLocalState({
   registry.set('missionRoster', []);
   registry.set('selectedUnit', null);
   registry.set('missionRunId', null);
+  registry.set('miniBossSpawnState', null);
   registry.set('missionSeed', null);
   registry.set('missionFaction', null);
   registry.set('missionEnvironmentKey', null);

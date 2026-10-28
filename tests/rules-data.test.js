@@ -10,10 +10,12 @@ const readJson = path => JSON.parse(readFileSync(new URL(path, import.meta.url),
 const enemies = readJson('../src/assets/config/enemies.json');
 const units = readJson('../src/assets/config/units.json');
 const equipment = readJson('../src/assets/config/equipment.json');
+const towers = readJson('../src/assets/config/towers.json');
 
-test('enemy configuration matches the five authoritative health baselines and preserves other stats', () => {
+test('enemy configuration matches the existing and mini-boss stat baselines', () => {
   assert.deepEqual(Object.values(enemies).map(({ force, health, tilesPerSecond, armor }) => [force, health, tilesPerSecond, armor]), [
     [2, 200, 1, 0], [4, 150, 2, 0], [10, 400, 0.75, 25], [20, 1000, 1, 20], [400, 20000, 0.75, 20],
+    [30, 1200, 1, 25], [30, 1500, 0.75, 75], [30, 2000, 1, 25],
   ]);
   assert.ok(Object.values(enemies).every(enemy => !('healthMultiplier' in enemy)));
 });
@@ -43,7 +45,7 @@ test('workbook unit tiers and Random paths match the defined designs', () => {
     assert.deepEqual(unit.pathTiers.map(tier => tier.paths.length), [3, 3, 2]);
   }
   assert.deepEqual(units.ASHIGARU.pathTiers.map(tier => tier.paths.length), [3, 3, 2]);
-  assert.deepEqual(units.INFILTRATOR.pathTiers.map(tier => tier.paths.length), [2, 2]);
+  assert.deepEqual(units.INFILTRATOR.pathTiers.map(tier => tier.paths.length), [3, 3, 2]);
   assert.deepEqual(units.SHINOBI.pathTiers.map(tier => tier.paths.length), [3, 3, 2]);
   for (const unit of Object.values(units)) {
     const randomPaths = unit.pathTiers.flatMap(tier => tier.paths).filter(path => path.name?.startsWith('Random'));
@@ -52,6 +54,11 @@ test('workbook unit tiers and Random paths match the defined designs', () => {
   assert.equal(units.GUTTER_THUGS.passive.value, 0.85);
   assert.equal(units.ANARCHO_SABOTEURS.passive.property, 'criticalFireDot');
   assert.equal(units.BELTER_PIRATE.passive.value, 0.15);
+});
+
+test('legacy Incendiary tower is removed while the remaining tower definitions stay available', () => {
+  assert.deepEqual(Object.keys(towers), ['PHYSICAL', 'ENERGY', 'STRIKER']);
+  assert.ok(Object.values(towers).every(tower => !(tower.statusEffects || []).some(effect => effect.type === 'fire' && effect.interval === 500)));
 });
 
 test('new state has no owned units, starts with 200 credits, and applies the first unit discount', () => {

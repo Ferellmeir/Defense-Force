@@ -12,3 +12,9 @@ export function getUnitCombatBonuses({ specialProperties = [], weaponAttacks = [
       : 0,
   };
 }
+
+export function getDualWieldDamageMultiplier(specialProperties = [], weapons = []) {
+  const bonus = specialProperties.find(property => property.property === 'dualWieldDamageBonus');
+  const oneHanded = weapons.filter(weapon => weapon?.hands === 1).length;
+  return bonus && oneHanded === 2 ? 1 + Number(bonus.value || 0) : 1;
+}

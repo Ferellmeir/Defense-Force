@@ -4,14 +4,14 @@ export function awardEnemyKillRewards(enemy, scene) {
   enemy.rewardsAwarded = true;
   let forceReward = Math.max(1, Number(enemy.data.force) || 1);
   const killerProperties = enemy.lastDamageSource?.towerData?.specialProperties || [];
-  const killForceBonus = killerProperties.find(property => property.property === 'forceBonusPerUnitKill');
-  if (killForceBonus) forceReward *= 1 + Number(killForceBonus.value || 0);
-  const flatKillBonus = killerProperties.find(property => property.property === 'forceFlatPerKill');
-  if (flatKillBonus) forceReward += Number(flatKillBonus.value || 0);
+  const killForceBonus = killerProperties.filter(property => property.property === 'forceBonusPerUnitKill');
+  if (killForceBonus.length) forceReward *= 1 + killForceBonus.reduce((total, property) => total + Number(property.value || 0), 0);
+  const flatKillBonus = killerProperties.filter(property => property.property === 'forceFlatPerKill');
+  if (flatKillBonus.length) forceReward += flatKillBonus.reduce((total, property) => total + Number(property.value || 0), 0);
   const survivedHit = enemy.forceBonusTowers?.has(enemy.lastDamageSource);
-  const survivedBonus = survivedHit && killerProperties.find(property => property.property === 'forceBonusForSurvivingTargets');
-  if (survivedBonus) forceReward *= 1 + Number(survivedBonus.value || 0);
-  scene.economyManager.addEnemyKill();
+  const survivedBonus = survivedHit ? killerProperties.filter(property => property.property === 'forceBonusForSurvivingTargets') : [];
+  if (survivedBonus.length) forceReward *= 1 + survivedBonus.reduce((total, property) => total + Number(property.value || 0), 0);
+  scene.economyManager.addEnemyKill(Math.max(1, Number(enemy.data.countsAs) || 1));
   scene.economyManager.addForce(forceReward);
 
   if (enemy.lastDamageSource && !enemy.xpAwarded) {

@@ -760,7 +760,8 @@ export default class RPGManager {
     if (!this.getUnitDefinition(unitId)) return false;
     let unit = this.getOwnedUnit(unitId);
     if (!unit) {
-      const freeWeapon = Object.values(this.equipment.items).find(item => item.rarity === 'MAKESHIFT');
+      const freeWeapon = Object.values(this.equipment.items).find(item => item.rarity === 'MAKESHIFT'
+        && this.isWeaponAllowed(unitId, item));
       unit = this.state.units[unitId] = {
         id: unitId, stars: 0, extraCopies: 0, extraPassiveUnlocked: false,
         equipped: { left: freeWeapon?.id || null, right: freeWeapon?.id || null, utility: null }, augments: [],
@@ -999,6 +1000,10 @@ export default class RPGManager {
       else if (effect.specialProperties) stats.specialProperties.push(...clone(effect.specialProperties));
       else this.applyEffect(stats, effect);
     });
+    const singleWeaponCritBonus = stats.specialProperties.find(property => property.property === 'singleOneHandedCritBonus');
+    if (singleWeaponCritBonus && activeWeapons.filter(weapon => weapon.hands === 1).length !== 1) {
+      stats.specialProperties = stats.specialProperties.filter(property => property !== singleWeaponCritBonus);
+    }
 
     const preSkillAttackSpeed = stats.attackSpeed;
     const relevantSkill = stats.attackType === 'melee'
@@ -1187,7 +1192,8 @@ export default class RPGManager {
       ...clone(stats),
       ...clone(attack),
       weaponId: `inherent-${index}`,
-      damage: Number(attack.damage || 0) * veterancyMultiplier * damageEffectMultiplier,
+      damage: Number(attack.damage || 0) * veterancyMultiplier * damageEffectMultiplier
+        * (1 + Number(stats.specialProperties.find(property => property.property === 'inherentAttackDamageBonus')?.value || 0)),
       range: Number(attack.range || 0) * Number(tileSize || 0) * rangeEffectMultiplier,
       attackSpeed: (1000 / Math.max(0.01, Number(attack.attacksPerSecond || 1)))
         / veterancyMultiplier / Math.max(0.01, 1 + (Number(stats.attackSpeedModifier) || 0))

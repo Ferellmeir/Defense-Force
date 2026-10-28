@@ -305,7 +305,7 @@ export default class MainHubScene extends Phaser.Scene {
     this.setDetails(`${definition?.name || entry.unitId} · ${displayFactionName(definition?.faction)}`, [
       `Rank ${fmt(stats?.rank ?? 0)}★ · Crit ${fmt((stats?.criticalChance || 0) * 100)}% · Crit modifier ${fmt((stats?.criticalModifier || 1) * 100)}% · Ranged skill ${fmt((stats?.rangedSkill || 0) * 100)}% · Reload ${fmt((stats?.reloadSpeed || 0) * 100)}%`,
       ...attackStats,
-      `Passive: ${definition?.passive?.name || 'None'}`,
+      `Passive: ${definition?.passive?.name || 'None'}${definition?.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''}`,
       `Equipped: ${equipment.join(' · ') || 'None'}${augments.length ? ` · Augments: ${augments.join(' · ')}` : ''}`,
       paths,
     ].join('\n'));
@@ -331,7 +331,7 @@ export default class MainHubScene extends Phaser.Scene {
         this.setDetails(`${item.name} · ${displayFactionName(item.faction)} · ${fmt(this.rpgManager.getUnitCreditCost(item.id))} Cr`, [
           `Unit stats: attack speed ${fmt((stats.attackSpeedModifier || 0) * 100)}% · crit ${fmt((stats.criticalChance || 0) * 100)}% · crit modifier ${fmt((stats.criticalModifier || 0) * 100)}% · ranged skill ${fmt((stats.rangedSkill || 0) * 100)}% · reload ${fmt((stats.reloadSpeed || 0) * 100)}%`,
           ...inherent,
-          `Passive: ${item.passive?.name || 'None'}`,
+          `Passive: ${item.passive?.name || 'None'}${item.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''}`,
           paths,
         ].join('\n'));
         return;

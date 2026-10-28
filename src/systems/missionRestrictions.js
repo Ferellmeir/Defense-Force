@@ -49,7 +49,8 @@ export function getMissionRestrictionFailure(deployments, mission, rpgManager) {
 }
 
 export function isDebuffBanned(type, restrictions = []) {
-  return String(type || '').toLowerCase() !== 'fire'
-    && restrictions.some(restriction => restriction.kind === 'debuff'
-      && String(restriction.debuff).toLowerCase() === String(type || '').toLowerCase());
+  const aliases = String(type || '').toLowerCase() === 'marked' || String(type || '').toLowerCase() === 'vulnerable'
+    ? new Set(['marked', 'vulnerable']) : new Set([String(type || '').toLowerCase()]);
+  return !aliases.has('fire') && restrictions.some(restriction => restriction.kind === 'debuff'
+    && aliases.has(String(restriction.debuff).toLowerCase()));
 }

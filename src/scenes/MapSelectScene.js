@@ -130,6 +130,7 @@ export default class MapSelectScene extends Phaser.Scene {
     this.registry.set('missionRewardMultiplier', this.selectedMission.rewardMultiplier);
     this.registry.set('missionSeed', this.selectedMission.mapSeeds[0]);
     this.registry.set('missionRunId', this.selectedMission.id);
+    this.registry.set('miniBossSpawnState', { missionRunId: this.selectedMission.id, chance: 20, outcomes: {} });
     this.registry.set('deploymentReturnScene', 'MapSelectScene');
     this.scene.start('DeploymentScene');
   }

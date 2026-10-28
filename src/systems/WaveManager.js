@@ -1,6 +1,7 @@
 const AUTO_WAVE_DELAY_MS = 30000;
 import { generateMissionWaves } from './waveGenerator.js';
 import { createSeededRandom } from './missionGeneration.js';
+import { addMiniBossToWave, getEnemyEquivalentCount, MINI_BOSS_START_CHANCE, resolveMiniBossWave } from './miniBossWaves.js';
 
 export default class WaveManager {
   constructor(scene) {
@@ -82,7 +83,8 @@ export default class WaveManager {
   getWaveData(waveNumber) {
     const wave = this.waveList[waveNumber - 1];
     if (!wave) return null;
-    const groups = wave.groups.filter(group => window.GAME_SETTINGS.ENEMIES[group.type]);
+    const groups = wave.groups.filter(group => window.GAME_SETTINGS.ENEMIES[group.type]
+      && !window.GAME_SETTINGS.ENEMIES[group.type].miniBoss);
     return {
       ...wave,
       interval: 1000,
@@ -90,7 +92,34 @@ export default class WaveManager {
       enemies: groups.map(group => group.type),
       spawnQueue: groups.flatMap(group => Array(group.count).fill(group.type)),
       count: groups.reduce((total, group) => total + group.count, 0),
+      enemyEquivalentCount: getEnemyEquivalentCount(groups, window.GAME_SETTINGS.ENEMIES),
     };
+  }
+
+  addMiniBoss(waveData) {
+    const registry = this.scene.registry;
+    const persistentRegistry = typeof registry?.set === 'function';
+    const missionRunId = persistentRegistry ? registry.get('missionRunId') : this.scene.missionRunId ?? null;
+    const state = persistentRegistry ? registry.get('miniBossSpawnState') : this.miniBossSpawnState;
+    const savedState = state?.missionRunId === missionRunId
+      ? state : { missionRunId, chance: MINI_BOSS_START_CHANCE, outcomes: {} };
+    const mapIndex = Number(this.scene.registry.get('missionMapIndex')) || 0;
+    const outcomeKey = `${mapIndex}:${waveData.waveNumber}`;
+    if (Object.hasOwn(savedState.outcomes, outcomeKey)) {
+      const outcome = savedState.outcomes[outcomeKey];
+      if (persistentRegistry) registry.set('miniBossSpawnState', savedState);
+      else this.miniBossSpawnState = savedState;
+      return outcome.type ? addMiniBossToWave(waveData, outcome.type) : waveData;
+    }
+
+    const seed = Number(this.scene.missionSeed ?? this.scene.registry.get('missionSeed')) || 0;
+    const random = createSeededRandom(seed ^ Math.imul(mapIndex + 1, 0x9e3779b1) ^ Math.imul(waveData.waveNumber, 0x85ebca6b));
+    const result = resolveMiniBossWave(waveData, { chance: savedState.chance, random });
+    savedState.chance = result.chance;
+    savedState.outcomes[outcomeKey] = { type: result.miniBossType };
+    if (persistentRegistry) registry.set('miniBossSpawnState', savedState);
+    else this.miniBossSpawnState = savedState;
+    return result.waveData;
   }
 
   getMissionTime() {
@@ -108,7 +137,8 @@ export default class WaveManager {
     if (this.currentWave >= this.totalWaves) return false;
 
     const nextWaveNumber = this.currentWave + 1;
-    const nextWaveData = this.getWaveData(nextWaveNumber);
+    const nextWaveDataBase = this.getWaveData(nextWaveNumber);
+    const nextWaveData = nextWaveDataBase ? this.addMiniBoss(nextWaveDataBase) : null;
     if (!nextWaveData?.count || nextWaveData.spawnQueue.length === 0) {
       this.scene.events.emit('showMessage', 'This wave has no configured enemy composition.', 2500);
       return false;

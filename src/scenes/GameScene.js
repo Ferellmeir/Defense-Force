@@ -14,6 +14,7 @@ import HealerEnemy from '../entities/HealerEnemy.js';
 import ShieldEnemy from '../entities/ShieldEnemy.js';
 import SplitEnemy from '../entities/SplitEnemy.js';
 import TeleportEnemy from '../entities/TeleportEnemy.js';
+import MiniBossEnemy from '../entities/MiniBossEnemy.js';
 import Projectile from '../entities/Projectile.js';
 import CollisionManager from '../systems/CollisionManager.js';
 import EffectSpawner from '../systems/EffectSpawner.js';
@@ -1056,6 +1057,9 @@ export default class GameScene extends Phaser.Scene {
         usePath
       );
       debugClass = 'TeleportEnemy';
+    } else if (enemyData.miniBoss) {
+      enemy = new MiniBossEnemy(this, spawnPoint.x, spawnPoint.y, type, enemyData, usePath);
+      debugClass = 'MiniBossEnemy';
     } else {
       enemy = new Enemy(
         this,

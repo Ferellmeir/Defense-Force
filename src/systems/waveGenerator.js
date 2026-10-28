@@ -59,7 +59,7 @@ export function generateMissionWaves({ difficulty, enemies, random = Math.random
   const [minimum, maximum] = range;
   const totalWaves = Number.isInteger(fixedTotalWaves) && fixedTotalWaves > 0
     ? fixedTotalWaves : minimum + Math.floor(random() * (maximum - minimum + 1));
-  const availableTypes = Object.keys(enemies).filter(type => type !== 'BOSS');
+  const availableTypes = Object.keys(enemies).filter(type => type !== 'BOSS' && !enemies[type]?.miniBoss);
   let rawEnemyCount = 30;
   let bossChance = 10;
 

@@ -7,6 +7,7 @@ import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { getMissionRestrictionFailure } from '../systems/missionRestrictions.js';
 import { createDeploymentSelection, handleDeploymentItemPointerDown } from '../systems/deploymentSelection.js';
 import { getDeploymentEquipmentRows } from '../systems/deploymentEquipmentPanel.js';
+import { getDeploymentUpgradeOverview } from '../systems/deploymentUpgradeOverview.js';
 
 const GOLD = '#ffe27a';
 const PALE = '#d8e6ef';
@@ -70,7 +71,18 @@ export default class DeploymentScene extends Phaser.Scene {
     this.filterControls = this.add.container(24, 230);
     this.drawFilters();
     this.detailTitle = this.add.text(300, 205, 'Select a lineup slot or inventory item', { fontSize: '18px', color: GOLD, fontStyle: 'bold' });
-    this.detailText = this.add.text(300, 234, '', { fontSize: '13px', color: PALE, wordWrap: { width: 700 }, lineSpacing: 3 });
+    this.detailText = this.add.text(300, 234, '', { fontSize: '12px', color: PALE, wordWrap: { width: 700 }, lineSpacing: 2, fixedWidth: 700, fixedHeight: 62 });
+    this.add.rectangle(640, 359, 704, 112, 0x101c28, 0.98).setStrokeStyle(1, 0x315267);
+    this.add.text(300, 304, 'UPGRADE PATHS', { fontSize: '11px', color: GOLD, fontStyle: 'bold' });
+    this.upgradePathText = this.add.text(300, 322, 'Select a unit to inspect its full progression.', {
+      fontSize: '10px', color: PALE, wordWrap: { width: 680 }, lineSpacing: 2, fixedWidth: 680,
+    });
+    this.upgradePathScroll = 0;
+    this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
+      if (pointer.x < 295 || pointer.x > 1004 || pointer.y < 300 || pointer.y > 416) return;
+      this.upgradePathScroll = Math.max(0, this.upgradePathScroll + Math.sign(deltaY));
+      this.updateUpgradePaths();
+    });
     this.slotControls = this.add.container(1020, 205);
     this.drawSlotControls();
 
@@ -101,7 +113,7 @@ export default class DeploymentScene extends Phaser.Scene {
     const box = this.add.rectangle(x + 82, y + 43, 170, 82, 0x192b3a, 0.98)
       .setStrokeStyle(2, index === this.activeSlot ? 0xffe27a : deployment ? 0x52788e : 0x53616b)
       .setInteractive({ useHandCursor: true });
-    box.on('pointerdown', () => { this.activeSlot = index; this.drawSlots(); this.drawSlotControls(); this.updateDetails(); });
+    box.on('pointerdown', () => { this.activeSlot = index; this.selection.clear(); this.drawSlots(); this.drawSlotControls(); this.updateDetails(); });
     const objects = [box, this.add.text(x + 8, y + 6, `SLOT ${index + 1}`, { fontSize: '10px', color: MUTED })];
     if (deployment) {
       const unit = this.rpgManager.getUnitDefinition(deployment.unitId);
@@ -230,7 +242,7 @@ export default class DeploymentScene extends Phaser.Scene {
         handleDeploymentItemPointerDown(item, event, {
           selectItem: selectedItem => {
             this.selection.select(selectedItem);
-            if (selectedItem.kind !== 'unit') { this.updateDetails(); this.drawInventory(); }
+            this.updateDetails(); this.drawInventory();
           },
           assignUnit: unitId => this.assignUnit(unitId),
         });
@@ -291,6 +303,10 @@ export default class DeploymentScene extends Phaser.Scene {
   updateDetails() {
     const selectedItem = this.getSelectedItem();
     const deployment = this.lineup[this.activeSlot];
+    const selectedUnitId = selectedItem?.kind === 'unit' ? selectedItem.id : deployment?.unitId;
+    if (selectedUnitId !== this.upgradeOverviewUnitId) this.upgradePathScroll = 0;
+    this.upgradeOverviewUnitId = selectedUnitId || null;
+    this.updateUpgradePaths();
     if (selectedItem?.kind === 'equipment') {
       const item = selectedItem;
       const stats = this.effectSummary(item) || item.description || 'No listed stat effects';
@@ -323,7 +339,32 @@ export default class DeploymentScene extends Phaser.Scene {
       ? `Remove for ${fmt(augment.cost)} Cr` : 'Removal destroys this common/uncommon augment') : 'One augment slot is available';
     this.detailTitle.setText(`${definition.name} · ${displayFactionName(definition.faction)} · Rank ${owned.stars || 0}`);
     const augmentDetails = augment ? this.effectSummary(augment) : '';
-    this.detailText.setText(`${statRows}\nPassive: ${definition.passive?.name || 'None'}${definition.passive?.description ? ` — ${definition.passive.description}` : ''}${definition.passive?.effects?.length ? ` (${definition.passive.effects.map(effect => `${effect.stat} ${effect.mode === 'percent' ? `${effect.value >= 0 ? '+' : ''}${fmt(effect.value * 100)}%` : `${effect.value >= 0 ? '+' : ''}${fmt(effect.value)}`}`).join(', ')})` : ''}\n${gear}\nAugment: ${augmentNames}${augmentDetails ? ` (${augmentDetails})` : ''} · ${augmentRule}`);
+    this.detailText.setText(`${statRows}\nPassive: ${definition.passive?.name || 'None'}${definition.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''}${definition.passive?.description ? ` — ${definition.passive.description}` : ''}${definition.passive?.effects?.length ? ` (${definition.passive.effects.map(effect => `${effect.stat} ${effect.mode === 'percent' ? `${effect.value >= 0 ? '+' : ''}${fmt(effect.value * 100)}%` : `${effect.value >= 0 ? '+' : ''}${fmt(effect.value)}`}`).join(', ')})` : ''}\n${gear}\nAugment: ${augmentNames}${augmentDetails ? ` (${augmentDetails})` : ''} · ${augmentRule}`);
+  }
+
+  updateUpgradePaths() {
+    if (!this.upgradePathText) return;
+    const selectedItem = this.getSelectedItem();
+    const unitId = selectedItem?.kind === 'unit' ? selectedItem.id : this.lineup[this.activeSlot]?.unitId;
+    if (!unitId) {
+      this.upgradePathText.setText('Select a unit to inspect its full progression.');
+      return;
+    }
+    const owned = this.rpgManager.getOwnedUnit(unitId) || {};
+    const tiers = getDeploymentUpgradeOverview(this.rpgManager, unitId, {
+      pathProgress: owned.pathProgress || owned.selectedPaths || {},
+      selectedPaths: owned.selectedPaths || {},
+      pathTierSelection: owned.pathTierSelection || {},
+      randomStat: owned.randomStat || null,
+    });
+    const rows = tiers.flatMap(tier => [
+      { kind: 'tier', text: `TIER ${tier.tier} · ${tier.unlocked ? 'UNLOCKED' : 'LOCKED'}` },
+      ...tier.paths.map(path => ({ kind: 'path', text: `• ${path.name} [${path.status}]${path.description ? `\n  ${path.description}` : ''}\n  Effect: ${path.effect}` })),
+    ]);
+    const maxRows = Math.max(0, rows.length - 1);
+    this.upgradePathScroll = Math.max(0, Math.min(this.upgradePathScroll, maxRows));
+    this.upgradePathText.setText(rows.slice(this.upgradePathScroll, this.upgradePathScroll + 2)
+      .map(row => row.kind === 'tier' ? `[ ${row.text} ]` : row.text).join('\n'));
   }
 
   effectSummary(item) {
@@ -412,6 +453,7 @@ export default class DeploymentScene extends Phaser.Scene {
     this.registry.set('missionSpecialTilePoints', mission.missionType === 'BARRICADE' ? 9 * difficultyLevel : 5);
     this.registry.set('selectedUnit', selected[0].deploymentId);
     this.registry.set('missionRunId', mission.id);
+    this.registry.set('miniBossSpawnState', { missionRunId: mission.id, chance: 20, outcomes: {} });
     this.registry.set('missionSeed', mission.mapSeeds?.[0] ?? mission.seed);
     this.registry.set('selectedMap', mission.mapKeys?.[0] || this.registry.get('selectedMap') || 'forest');
     return true;

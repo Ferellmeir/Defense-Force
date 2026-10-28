@@ -6,6 +6,14 @@ import { writeGeneratedAsset } from '../src/utils/generatedAssetProtection.js';
 
 const units = JSON.parse(fs.readFileSync(new URL('../src/assets/config/units.json', import.meta.url), 'utf8'));
 const enemies = JSON.parse(fs.readFileSync(new URL('../src/assets/config/enemies.json', import.meta.url), 'utf8'));
+const infiltratorAsset = fs.readFileSync(new URL('../public/assets/Infiltrator.png', import.meta.url));
+
+test('Infiltrator uses its supplied artwork with a protected filename', () => {
+  assert.equal(units.INFILTRATOR.asset, 'Infiltrator');
+  assert.equal(units.INFILTRATOR.characterArt, true);
+  assert.deepEqual([...infiltratorAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.throws(() => writeGeneratedAsset('Infiltrator.png', Buffer.from('test'), () => {}), /protected artwork/);
+});
 
 test('different source resolutions with the same aspect ratio receive the same configured size', () => {
   const visualSize = { width: 64, height: 64 };
@@ -41,10 +49,33 @@ test('enemy definitions keep distinct Elite and Boss assets, sizes, anchors, and
   }
 });
 
+test('mini-boss assets and stat definitions match the supplied mini-boss specifications', () => {
+  const expected = {
+    SWARMER: { asset: 'swarmer', health: 1200, tilesPerSecond: 1, armor: 25 },
+    ARMORER: { asset: 'armorer', health: 1500, tilesPerSecond: 0.75, armor: 75 },
+    GRAFTER: { asset: 'grafter', health: 2000, tilesPerSecond: 1, armor: 25 },
+  };
+  for (const [type, stats] of Object.entries(expected)) {
+    assert.deepEqual({
+      asset: enemies[type].asset,
+      health: enemies[type].health,
+      tilesPerSecond: enemies[type].tilesPerSecond,
+      armor: enemies[type].armor,
+    }, stats);
+    assert.equal(enemies[type].miniBoss, true);
+    assert.equal(enemies[type].force, 30);
+    assert.equal(enemies[type].countsAs, 5);
+    assert.deepEqual(enemies[type].visualSize, enemies.ELITE.visualSize);
+    const asset = fs.readFileSync(new URL(`../public/assets/enemy_${stats.asset}.png`, import.meta.url));
+    assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  }
+});
+
 test('asset generator refuses every protected character and enemy artwork filename', () => {
   const protectedNames = [
     'enemy_basic.png', 'enemy_fast.png', 'enemy_armored.png', 'enemy_elite.png', 'enemy_boss.png',
-    'gutter_thug.png', 'anarcho_saboteur.png', 'syndicate_fixer.png', 'belter_pirate.png', 'pallid_order_blade.png',
+    'enemy_swarmer.png', 'enemy_armorer.png', 'enemy_grafter.png',
+    'gutter_thug.png', 'anarcho_saboteur.png', 'syndicate_fixer.png', 'belter_pirate.png', 'pallid_order_blade.png', 'Infiltrator.png',
   ];
   for (const filename of protectedNames) {
     let wroteFile = false;

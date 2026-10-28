@@ -113,7 +113,7 @@ test('Gutter Thug stun and Belter Pirate bleed attach only on successful melee p
     assert.equal(hasActiveStun(applied), true);
     assert.equal(applied[1].totalDamage, 8.9);
     assert.equal(applied[1].duration, 5000);
-    assert.equal(applied[1].interval, 500);
+    assert.equal(applied[1].interval, 1000);
   } finally {
     Math.random = originalRandom;
   }
@@ -140,18 +140,34 @@ test('stun expires at 0.5 seconds and bleed resolves its full damage over 5 seco
   assert.deepEqual(enemy.statusEffects, []);
 });
 
-test('melee path properties reach both one-handed and two-handed live weapon profiles', () => {
+test('melee stun and on-hit bleed path properties reach both weapon profiles', () => {
   for (const [unitId, pathId, weaponId, property] of [
     ['GUTTER_THUGS', 'melee_stun', 'lead_pipe', 'meleeStunChance'],
     ['GUTTER_THUGS', 'melee_stun', 'shiv', 'meleeStunChance'],
-    ['BELTER_PIRATE', 'bleed_melee', 'lead_pipe', 'meleeBleedChance'],
-    ['BELTER_PIRATE', 'bleed_melee', 'shiv', 'meleeBleedChance'],
+    ['BELTER_PIRATE', 'bleed_on_hit', 'lead_pipe', 'bleedChance'],
+    ['BELTER_PIRATE', 'bleed_on_hit', 'shiv', 'bleedChance'],
   ]) {
     const manager = managerFor(unitId, weaponId);
     const profile = manager.getEffectiveStats(unitId, { pathProgress: { [pathId]: 1 } }).weaponAttacks[0];
     assert.equal(profile.attackType, 'melee');
     assert.ok(profile.specialProperties.some(effect => effect.property === property));
   }
+});
+
+test('Belter Pirate bleed path procs on ranged as well as melee hits', () => {
+  const originalRandom = Math.random;
+  const applied = [];
+  const target = { health: 100, maxHealth: 100, armor: 0, data: { vulnerabilities: {} }, statusEffects: [],
+    takeDamage(amount) { this.health -= amount; }, applyStatusEffect(effect) { applied.push(effect); } };
+  const manager = managerFor('BELTER_PIRATE', 'slum_gat');
+  const profile = manager.getEffectiveStats('BELTER_PIRATE', { pathProgress: { bleed_on_hit: 1 } }).weaponAttacks[0];
+  try {
+    Math.random = () => 0;
+    applyDamage(target, { damage: 1, attackType: 'ranged', specialProperties: profile.specialProperties });
+  } finally { Math.random = originalRandom; }
+  assert.equal(applied[0].type, 'bleed');
+  assert.equal(applied[0].totalDamage, 9.9);
+  assert.equal(applied[0].duration, 5000);
 });
 
 test('melee-only effects do not proc from ranged hits', () => {

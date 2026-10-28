@@ -7,7 +7,7 @@ function createEnemy(force) {
   const tower = { addExperience: amount => { rewards.xp += amount; } };
   const scene = {
     economyManager: {
-      addEnemyKill: () => { rewards.kills += 1; },
+      addEnemyKill: count => { rewards.kills += count || 1; },
       addForce: amount => { rewards.force += amount; },
       getMoney: () => 0,
       getScore: () => 0,
@@ -37,4 +37,12 @@ test('normal, fast, armored, elite, and boss kills award their configured Force 
     assert.equal(rewards.xp, configuredReward);
     assert.equal(rewards.kills, 1);
   }
+});
+
+test('mini-boss kill progression counts five enemies while Force and XP are awarded once', () => {
+  const { enemy, rewards, scene } = createEnemy(30);
+  enemy.data.countsAs = 5;
+  awardEnemyKillRewards(enemy, scene);
+  awardEnemyKillRewards(enemy, scene);
+  assert.deepEqual(rewards, { force: 30, xp: 30, kills: 5, removals: 0 });
 });

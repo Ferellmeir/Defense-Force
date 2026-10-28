@@ -64,7 +64,7 @@ test('fire applies 15 percent damage over five seconds as a separate damage effe
   assert.equal(enemy.effects.length, 1);
   assert.equal(enemy.effects[0].totalDamage, 13.5);
   assert.equal(enemy.effects[0].duration, 5000);
-  assert.equal(enemy.effects[0].interval, 500);
+  assert.equal(enemy.effects[0].interval, 1000);
 });
 
 test('first-hit path bonus is applied once per target', () => {

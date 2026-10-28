@@ -106,6 +106,33 @@ Armor 40
 Doesnt show up before wave 15  
 Counts as 100 normal enemies
 
+Swarmer \- 30 force  
+Xp same as force  
+1 tile per second  
+1200 health  
+25 armor  
+Doesn't show up before wave 10  
+Counts as 5 normal enemies  
+Gives all enemies within 5 ranged a speed boost which doubles their speed (after modifiers) duration 5 seconds cool down 12 seconds
+
+Armorer \- 30 force  
+Xp same as force  
+.75 tiles per second  
+1500 health  
+75 armor  
+Doesn't show up before wave 10  
+Counts as 5 normal enemies  
+Gives all enemies within a range of 4 bonus armor \+10 while they are in that range continuously 
+
+Grafter \- 30 force  
+Xp same as force  
+1 tile per second   
+2000 health  
+25 armor  
+Doesn’t show up before wave 10  
+Counts as 5 normal enemies  
+Every 3 seconds grafter gives a buff to all damaged enemies with range 4 healing their missing health up to 500 over 3 seconds (Grafter takes the same amount of damage to itself over the same duration, ignores armor)
+
 Enemy health multiplied by 1.15 every 5th wave which becomes the new baseline 
 
 Wave 1 starts with 30 enemies 90% are normal 10% are randomly armoured and/or fast
@@ -122,6 +149,10 @@ After wave 4 there is a 10% chance each wave that the wave is 100% the same type
 Enemies spawn in groups of the same kind together
 
 Mission will have fast forward (x1 x2 x3 x4 options) and send next wave buttons
+
+Grafters, swarmers and armorers are mini bosses and 1 of those 3 comes 20% of the time wave 10 onwards   
+Mini bosses come in the middle of the wave.  
+If a mini boss does not show up the chance for a mini boss goes up 3% until a boss is spawned and the chance resets
 
 Boss enemies only show up 1 at a time and there is a 10% chance a boss will come every wave after 14  
 If a boss does not show up the chance for a boss goes up 2% until a boss is spawned and the chance resets
@@ -351,8 +382,8 @@ bleed 10% of current health over 5 seconds additional hits refresh duration but 
 fire  % of damage dealt on attack as dot (stacking) 15% over 5 seconds,  not reduced by armor  
 poison 5% of max health over 5 seconds additional hits refresh duration but dont stack, not effected by armor  
 Exposed attacks against the target have a \+(x) chance to crit, duration 5 seconds, additional hits refresh duration but dont stack  
-Vulnerable attacks (not damage from dots) against the target deal \+15% damage (can be more than 10% if specified), duration 5 seconds, additional hits refresh duration but dont stack  
-Weakened damage from status effects deals \+15% damage (can be more than 10% if specified), duration 5 seconds, additional hits refresh duration but dont stack
+Vulnerable attacks (not damage from dots) against the target deal \+15% damage (can be more than 15% if specified), duration 5 seconds, additional hits refresh duration but dont stack  
+Weakened damage from status effects deals \+15% damage (can be more than 15% if specified), duration 5 seconds, additional hits refresh duration but dont stack
 
 Damage from all effects does not crit and is divided by 5 and dealt in 1 second increments called ticks  
 Each tick deals 1 damage minimum

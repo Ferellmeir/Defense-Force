@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { awardEnemyKillRewards } from '../systems/enemyRewards.js';
-import { hasActiveStun, updateEnemyStatusEffects } from '../systems/EnemyStatusEffects.js';
+import { applyEnemyStatusEffect, hasActiveStun, updateEnemyStatusEffects } from '../systems/EnemyStatusEffects.js';
 import { getEnemyEffectPosition } from '../utils/combatCoordinates.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
+import { applySwarmSpeedBuff } from '../systems/miniBossAbilities.js';
 
 export default class Enemy extends Phaser.GameObjects.Container {
   /**
@@ -41,6 +42,7 @@ export default class Enemy extends Phaser.GameObjects.Container {
     this.lastDamageSource = null;
     this.slowEffects = []; // Array of active slow effects
     this.xpAwarded = false;
+    this.armorModifiers = new Map();
 
     // Create enemy sprite
     this.sprite = scene.add.image(0, 0, `enemy_${this.data.asset || type}`);
@@ -65,6 +67,22 @@ export default class Enemy extends Phaser.GameObjects.Container {
     scene.physics.world.enable(this);
     this.body.setCircle(16); // Adjust size as needed
     this.updateProjectedVisuals();
+  }
+
+  get armor() {
+    const base = Number(this._baseArmor) || 0;
+    const modifiers = [...(this.armorModifiers?.values() || [])].reduce((sum, value) => sum + value, 0);
+    return Math.max(0, base + modifiers);
+  }
+
+  set armor(value) {
+    const modifiers = [...(this.armorModifiers?.values() || [])].reduce((sum, amount) => sum + amount, 0);
+    this._baseArmor = Math.max(0, (Number(value) || 0) - modifiers);
+  }
+
+  setArmorModifier(source, amount) {
+    if (amount === null || amount === undefined || !Number.isFinite(Number(amount))) this.armorModifiers.delete(source);
+    else this.armorModifiers.set(source, Number(amount));
   }
 
   /**
@@ -148,6 +166,7 @@ export default class Enemy extends Phaser.GameObjects.Container {
     for (const slowEffect of this.statusEffects.filter(effect => effect.type === 'slow')) {
       speed *= slowEffect.value;
     }
+    speed = applySwarmSpeedBuff(speed, this.swarmSpeedBuffs, Number(this.scene.gameTime) || 0, this.scene);
     if (hasActiveStun(this.statusEffects)) return;
 
     // Convert speed from pixels per second to pixels per frame
@@ -335,11 +354,7 @@ export default class Enemy extends Phaser.GameObjects.Container {
 
   applyStatusEffect(effect) {
     const gameTime = Number(this.scene.gameTime ?? this.scene.time.now);
-    this.statusEffects.push({
-      ...effect,
-      endTime: gameTime + effect.duration,
-      nextTick: gameTime,
-    });
+    applyEnemyStatusEffect(this, effect, gameTime);
     if (effect.type === 'slow') this.sprite.setTint(0x00ffff);
   }
 

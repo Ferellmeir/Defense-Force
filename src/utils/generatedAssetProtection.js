@@ -6,11 +6,15 @@ const protectedAssetFilenames = new Set([
   'enemy_armored.png',
   'enemy_elite.png',
   'enemy_boss.png',
+  'enemy_swarmer.png',
+  'enemy_armorer.png',
+  'enemy_grafter.png',
   'gutter_thug.png',
   'anarcho_saboteur.png',
   'syndicate_fixer.png',
   'belter_pirate.png',
   'pallid_order_blade.png',
+  'infiltrator.png',
 ]);
 
 export function writeGeneratedAsset(filename, content, writeFile) {

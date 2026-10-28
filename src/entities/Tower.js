@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import AmmoMagazine, { isAmmoConfigurationMissing } from '../systems/AmmoMagazine.js';
 import { applyDamage } from '../systems/DamageSystem.js';
-import { getUnitCombatBonuses } from '../systems/UnitCombatBonuses.js';
+import { getDualWieldDamageMultiplier, getUnitCombatBonuses } from '../systems/UnitCombatBonuses.js';
 import { spawnProjectileHitEffect } from '../systems/ProjectileEffectBridge.js';
 import { isWithinWeaponRange } from '../utils/weaponRange.js';
 import { selectTarget } from '../utils/targetSelection.js';
@@ -9,6 +9,7 @@ import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { withTileChanceBonus } from '../systems/combatChance.js';
 import { getCurrentMissionRestrictions, isDebuffBanned } from '../systems/missionRestrictions.js';
 import { TILE_EFFECTS } from '../systems/tileEffects.js';
+import { activateAdjacentAllyDamageBuff } from '../systems/unitAllyEffects.js';
 
 const DUAL_WIELD_ATTACK_OFFSET = 120;
 
@@ -167,11 +168,29 @@ export default class Tower extends Phaser.GameObjects.Container {
       const critBoost = this.towerData.specialProperties?.find(property => property.property === 'critDamageBoost');
       const critSpeedMultiplier = critBoost && time < (this.critDamageBoostUntil || 0)
         ? 1 + Number(critBoost.attackSpeedPenalty || 0) : 1;
+      const exposedHitBoost = this.towerData.specialProperties?.find(property => property.property === 'exposedHitAttackSpeedBoost');
+      const exposedHitMultiplier = exposedHitBoost && time < (this.exposedHitAttackSpeedUntil || 0)
+        ? 1 + Number(exposedHitBoost.value || 0) : 1;
       const tileType = this.placementTile?.specialType;
       state.attackInterval = Number(state.profile.attackSpeed ?? state.profile.fireRate ?? 1000)
-        / speedMultiplier / Math.max(0.01, critSpeedMultiplier) * (tileType === 'tactical_indoctrination'
+        / speedMultiplier / Math.max(0.01, critSpeedMultiplier) / exposedHitMultiplier * (tileType === 'tactical_indoctrination'
           ? TILE_EFFECTS.tactical_indoctrination.attackIntervalMultiplier : 1);
+      const wasReloading = state.ammoMagazine.reloadUntil > 0;
       state.ammoMagazine.update(time);
+      if (wasReloading && !state.ammoMagazine.reloadUntil) {
+        const postReload = this.towerData.specialProperties?.find(property => property.property === 'postReloadDamage');
+        if (postReload) this.postReloadDamageUntil = time + Number(postReload.duration || 0);
+      }
+      const adjacentReload = this.towerData.specialProperties?.find(property => property.property === 'adjacentAshigaruReload');
+      if (adjacentReload) {
+        const own = this.placementTile?.gridPosition;
+        const count = own ? (this.scene.towerManager?.getAll?.() || []).filter(tower => tower !== this
+          && tower.characterId === 'ASHIGARU'
+          && Math.abs((tower.placementTile?.gridPosition?.x ?? 999) - own.x)
+            + Math.abs((tower.placementTile?.gridPosition?.y ?? 999) - own.y) === 1).length : 0;
+        const bonus = Math.min(Number(adjacentReload.max || 2), count) * Number(adjacentReload.value || 0);
+        state.ammoMagazine.reloadDuration = Number(state.profile.reloadSpeed || state.ammoMagazine.reloadDuration) / Math.max(0.01, 1 + bonus);
+      }
       enemies.forEach(enemy => {
         if (this.isValidTarget(enemy, state.profile.range, state.profile.attackType)) this.tryMarkEnemy(enemy);
       });
@@ -321,23 +340,30 @@ export default class Tower extends Phaser.GameObjects.Container {
     const critBonus = this.towerData.specialProperties?.find(property => property.property === 'killCritBonus');
     if (critBonus) this.nextCritChanceBonus = Number(critBonus.value || 0);
     const reload = this.towerData.specialProperties?.find(property => property.property === 'killReload');
-    if (!reload) return;
     const now = Number(this.scene.gameTime ?? this.scene.time.now);
-    this.weaponAttackStates.forEach(state => {
+    if (reload) this.weaponAttackStates.forEach(state => {
       const magazine = state.ammoMagazine;
-      if (magazine.reloadUntil > now) {
-        magazine.reloadUntil = now + (magazine.reloadUntil - now) * (1 - Number(reload.value || 0));
-      }
+      if (magazine.reloadUntil > now) magazine.reloadUntil = now + (magazine.reloadUntil - now) * (1 - Number(reload.value || 0));
     });
+    const freeAttack = this.towerData.specialProperties?.find(property => property.property === 'freeAttackOnKill');
+    if (!freeAttack || now < Number(this.freeAttackCooldownUntil || 0)) return;
+    const target = (this.scene.enemyManager?.getAll?.() || []).find(enemy => this.isValidTarget(enemy));
+    if (!target) return;
+    this.freeAttackCooldownUntil = now + Number(freeAttack.cooldown || 0);
+    const state = this.weaponAttackStates.find(candidate => this.isValidTarget(target, candidate.profile.range, candidate.profile.attackType));
+    if (state) {
+      state.target = target;
+      this.fireAtTarget(now, state, { freeAttack: true, allowBonusAttack: false });
+    }
   }
 
   /**
    * Fire at the current target
    * @param {number} time - Current time
    */
-  fireAtTarget(time, attackState = this.weaponAttackStates[0]) {
-    if (!attackState || !attackState.ammoMagazine.canFire(time)) return;
-    if (!attackState.ammoMagazine.consumeShot(time)) return;
+  fireAtTarget(time, attackState = this.weaponAttackStates[0], options = {}) {
+    if (!attackState || (!options.freeAttack && !attackState.ammoMagazine.canFire(time))) return;
+    if (!options.freeAttack && !attackState.ammoMagazine.consumeShot(time)) return;
 
     attackState.lastFireTime = time;
     if (attackState === this.weaponAttackStates[0]) this.lastFireTime = time;
@@ -356,6 +382,10 @@ export default class Tower extends Phaser.GameObjects.Container {
       deployedCount: this.scene.towerManager?.getAll?.().length || 1,
     });
     damage *= unitCombatBonuses.damageMultiplier;
+    damage *= getDualWieldDamageMultiplier(specialProperties, this.equipment.weapons || []);
+    const postReload = specialProperties.find(property => property.property === 'postReloadDamage');
+    if (postReload && time < (this.postReloadDamageUntil || 0)) damage *= 1 + Number(postReload.value || 0);
+    if (this.allyDamageBuffUntil > time) damage *= 1 + Number(this.allyDamageBuffValue || 0);
     const critBoost = specialProperties.find(property => property.property === 'critDamageBoost');
     if (critBoost && time < (this.critDamageBoostUntil || 0)) damage *= 1 + Number(critBoost.value || 0);
     const meleeDamageBonus = specialProperties.find(property => property.property === 'meleeDamageBonus');
@@ -453,6 +483,19 @@ export default class Tower extends Phaser.GameObjects.Container {
 
     // Visual feedback
     this.playAttackAnimation();
+    if (options.allowBonusAttack !== false) {
+      const ordinaryDouble = specialProperties.find(property => property.property === 'doubleAttackChance');
+      const inherentDouble = String(weaponStats.weaponId || '').startsWith('inherent-')
+        ? specialProperties.find(property => property.property === 'inherentAttackDoubleChance') : null;
+      const doubleAttack = ordinaryDouble || inherentDouble;
+      if (doubleAttack && Math.random() < withTileChanceBonus(doubleAttack.value, this)) {
+        this.fireAtTarget(time, attackState, { freeAttack: true, allowBonusAttack: false });
+      }
+    }
+  }
+
+  activateAdjacentAllyDamageBuff() {
+    activateAdjacentAllyDamageBuff(this);
   }
 
   canFire(time) {

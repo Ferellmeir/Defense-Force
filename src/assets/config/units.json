@@ -148,9 +148,8 @@
               "amount": 0.5
             },
             "maxBonus": {
-              "type": "stat",
-              "stat": "sellBonus",
-              "mode": "percent",
+              "type": "special",
+              "property": "weakenedChance",
               "value": 0.25
             }
           },
@@ -171,6 +170,9 @@
           }
         ]
       }
+    ],
+    "weaponRestrictions": [
+      "heavy"
     ]
   },
   "ANARCHO_SABOTEURS": {
@@ -507,6 +509,9 @@
           }
         ]
       }
+    ],
+    "weaponRestrictions": [
+      "heavy"
     ]
   },
   "BELTER_PIRATE": {
@@ -647,11 +652,11 @@
         "tier": 3,
         "paths": [
           {
-            "id": "bleed_melee",
-            "name": "10% chance to bleed on melee hit (10% current health over 5 seconds)",
+            "id": "bleed_on_hit",
+            "name": "10% chance to bleed on hit (10% current health over 5 seconds)",
             "effect": {
               "type": "special",
-              "property": "meleeBleedChance",
+              "property": "bleedChance",
               "value": 0.1,
               "healthFraction": 0.1,
               "duration": 5000
@@ -732,20 +737,30 @@
             "effect": {
               "type": "stat",
               "stat": "damage",
-              "mode": "percent",
-              "value": 0.05
+              "value": 0.05,
+              "mode": "percent"
             },
             "maxBonus": {
               "type": "stat",
               "stat": "damage",
-              "mode": "percent",
-              "value": 0.1
+              "value": 0.1,
+              "mode": "percent"
             }
           },
           {
-            "id": "empty_tier_1_path",
-            "name": "Empty workbook entry",
-            "unimplemented": true
+            "id": "single_weapon_crit",
+            "name": "Critical modifier +25% while using one 1-handed weapon",
+            "effect": {
+              "type": "special",
+              "property": "singleOneHandedCritBonus",
+              "value": 0.25
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "value": 0.15,
+              "mode": "percent"
+            }
           },
           {
             "id": "first_hit",
@@ -758,7 +773,8 @@
             "maxBonus": {
               "type": "stat",
               "stat": "criticalModifier",
-              "value": 0.25
+              "value": 0.25,
+              "mode": "percent"
             }
           }
         ]
@@ -779,24 +795,34 @@
             }
           },
           {
+            "id": "armor_ignore",
+            "name": "5% chance to ignore 75% armor on hit",
+            "effect": {
+              "type": "special",
+              "property": "armorIgnoreChance",
+              "value": 0.05,
+              "amount": 0.75
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "doubleAttackChance",
+              "value": 0.1
+            }
+          },
+          {
             "id": "status_duration",
             "name": "Status effects last 7% longer",
             "effect": {
               "type": "stat",
               "stat": "statusDuration",
-              "mode": "percent",
-              "value": 0.07
+              "value": 0.07,
+              "mode": "percent"
             },
             "maxBonus": {
               "type": "special",
               "property": "refreshStatusChance",
               "value": 0.1
             }
-          },
-          {
-            "id": "empty_tier_2_path",
-            "name": "Empty workbook entry",
-            "unimplemented": true
           }
         ]
       },
@@ -804,18 +830,44 @@
         "tier": 3,
         "paths": [
           {
-            "id": "empty_tier_3_path_a",
-            "name": "Empty workbook entry",
-            "unimplemented": true
+            "id": "missing_health_damage",
+            "name": "Damage +0.25% per 1% of target health missing",
+            "effect": {
+              "type": "special",
+              "property": "missingHealthDamage",
+              "perMissingHealthPercent": 0.0025
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "criticalChance",
+              "value": 0.1,
+              "mode": "percent"
+            }
           },
           {
-            "id": "empty_tier_3_path_b",
-            "name": "Empty workbook entry",
-            "unimplemented": true
+            "id": "status_stack_damage",
+            "name": "Damage +5% per status effect on target",
+            "effect": {
+              "type": "special",
+              "property": "statusStackDamage",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "triggerStatusTicksOnHit"
+            }
           }
         ]
       }
-    ]
+    ],
+    "weaponRestrictions": [
+      "firearms"
+    ],
+    "passive": {
+      "name": "Doubles the effect of poison",
+      "type": "special",
+      "property": "doublePoisonEffects"
+    }
   },
   "ASHIGARU": {
     "id": "ASHIGARU",
@@ -884,12 +936,16 @@
             }
           },
           {
-            "id": "faction_chance",
-            "name": "Chance based abilities +2.5%",
+            "id": "adjacent_ally_damage",
+            "name": "On-hit effect applied: adjacent allies +5% damage (max 2, 5 seconds, non-stacking)",
             "effect": {
               "type": "special",
-              "property": "factionChanceBonus",
-              "value": 0.025
+              "property": "adjacentAllyDamageOnProc",
+              "value": 0.05,
+              "radiusTiles": 1,
+              "maxAllies": 2,
+              "duration": 5000,
+              "nonStacking": true
             },
             "maxBonus": {
               "type": "special",
@@ -985,11 +1041,11 @@
       }
     ],
     "passive": {
-      "name": "15% chance to apply Exposed (20%) on hit",
+      "name": "15% chance to apply Exposed (10%) on hit",
       "type": "special",
       "property": "exposeChance",
       "value": 0.15,
-      "damageTaken": 0.2,
+      "criticalChanceBonus": 0.1,
       "duration": 5000
     },
     "weaponRestrictions": [
@@ -1000,7 +1056,7 @@
     "id": "INFILTRATOR",
     "name": "Infiltrator",
     "faction": "Laisung Collective",
-    "asset": "anarcho_saboteur",
+    "asset": "Infiltrator",
     "characterArt": true,
     "visualSize": {
       "width": 64,
@@ -1023,7 +1079,7 @@
       "criticalChance": 0,
       "criticalModifier": 1,
       "rangedSkill": 0.05,
-      "meleeSkill": 0,
+      "meleeSkill": -0.15,
       "reloadSpeed": 0.05
     },
     "pathTiers": [
@@ -1047,12 +1103,30 @@
             }
           },
           {
-            "id": "faction_chance",
-            "name": "Chance based abilities +2.5%",
+            "id": "poison_on_hit",
+            "name": "5% chance to poison on hit",
             "effect": {
               "type": "special",
-              "property": "factionChanceBonus",
-              "value": 0.025
+              "property": "poisonChance",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "poisonChance",
+              "value": 0.1
+            }
+          },
+          {
+            "id": "adjacent_ally_damage",
+            "name": "On-hit effect applied: adjacent allies +5% damage (max 2, 5 seconds, non-stacking)",
+            "effect": {
+              "type": "special",
+              "property": "adjacentAllyDamageOnProc",
+              "value": 0.05,
+              "radiusTiles": 1,
+              "maxAllies": 2,
+              "duration": 5000,
+              "nonStacking": true
             },
             "maxBonus": {
               "type": "special",
@@ -1070,13 +1144,27 @@
             "name": "Random stat (deployment roll)",
             "effect": {
               "type": "special",
-              "property": "randomStatPath",
-              "value": null
+              "property": "randomStatPath"
             },
             "maxBonus": {
               "type": "special",
-              "property": "randomStatPathMax",
-              "value": null
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "dual_wield_damage",
+            "name": "Dual wielding: damage +7.5%",
+            "effect": {
+              "type": "special",
+              "property": "dualWieldDamageBonus",
+              "value": 0.075
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "vulnerableChance",
+              "value": 0.15,
+              "damageTaken": 0.25,
+              "duration": 15000
             }
           },
           {
@@ -1095,12 +1183,58 @@
             }
           }
         ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "critical_modifier",
+            "name": "Critical modifier +25%",
+            "effect": {
+              "type": "stat",
+              "stat": "criticalModifier",
+              "value": 0.25,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "attackSpeedModifier",
+              "value": 0.15,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "missing_health_damage",
+            "name": "10% chance to deal +1% damage per missing target health percent (primary target only)",
+            "effect": {
+              "type": "special",
+              "property": "missingHealthDamageChance",
+              "value": 0.1,
+              "perMissingHealthPercent": 0.01,
+              "primaryTargetOnly": true
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "reloadSpeed",
+              "value": 0.3,
+              "mode": "percent"
+            }
+          }
+        ]
       }
     ],
     "weaponRestrictions": [
       "heavy",
       "explosion"
-    ]
+    ],
+    "passive": {
+      "name": "On hit against Exposed: +15% attack speed for 5 seconds (does not stack)",
+      "type": "special",
+      "property": "exposedHitAttackSpeedBoost",
+      "value": 0.15,
+      "duration": 5000,
+      "nonStacking": true
+    }
   },
   "SHINOBI": {
     "id": "SHINOBI",
@@ -1167,12 +1301,16 @@
             }
           },
           {
-            "id": "faction_chance",
-            "name": "Chance based abilities +2.5%",
+            "id": "adjacent_ally_damage",
+            "name": "On-hit effect applied: adjacent allies +5% damage (max 2, 5 seconds, non-stacking)",
             "effect": {
               "type": "special",
-              "property": "factionChanceBonus",
-              "value": 0.025
+              "property": "adjacentAllyDamageOnProc",
+              "value": 0.05,
+              "radiusTiles": 1,
+              "maxAllies": 2,
+              "duration": 5000,
+              "nonStacking": true
             },
             "maxBonus": {
               "type": "special",
@@ -1287,38 +1425,186 @@
     "faction": "Laisung Collective",
     "asset": "Siege_frame",
     "characterArt": true,
-    "visualSize": { "width": 64, "height": 64 },
-    "visualOrigin": { "x": 0.5, "y": 0.95 },
+    "visualSize": {
+      "width": 64,
+      "height": 64
+    },
+    "visualOrigin": {
+      "x": 0.5,
+      "y": 0.95
+    },
     "filtering": "linear",
     "cost": 45,
     "baseStats": {
-      "damage": 0, "damageType": "Physical", "range": 0, "attackSpeed": 1000,
-      "projectileSpeed": 0, "armorPenetration": 0, "attackSpeedModifier": 0,
-      "criticalChance": 0.1, "criticalModifier": 0.75, "rangedSkill": 0.1,
-      "meleeSkill": 0, "reloadSpeed": 0.3, "aoeDamageMultiplier": 1
+      "damage": 0,
+      "damageType": "Physical",
+      "range": 0,
+      "attackSpeed": 1000,
+      "projectileSpeed": 0,
+      "armorPenetration": 0,
+      "attackSpeedModifier": 0,
+      "criticalChance": 0.1,
+      "criticalModifier": 0.75,
+      "rangedSkill": 0.1,
+      "meleeSkill": 0,
+      "reloadSpeed": 0.3,
+      "aoeDamageMultiplier": 1
     },
-    "inherentAttacks": [{
-      "damage": 80, "damageType": "Physical", "range": 3,
-      "attacksPerSecond": 0.2, "criticalChance": 0, "criticalModifier": 0,
-      "aoeRadius": 1, "aoeDamageMultiplier": 0.5, "projectileAsset": "aoe"
-    }],
+    "inherentAttacks": [
+      {
+        "damage": 80,
+        "damageType": "Physical",
+        "range": 3,
+        "attacksPerSecond": 0.2,
+        "criticalChance": 0,
+        "criticalModifier": 0,
+        "aoeRadius": 1,
+        "aoeDamageMultiplier": 0.5,
+        "projectileAsset": "aoe"
+      }
+    ],
     "passive": {
       "name": "Inherent attack: 80 damage, 3 tile range; 50% damage in a 1 tile radius",
-      "type": "special", "property": "inherentAttack"
+      "type": "special",
+      "property": "inherentAttack"
     },
     "pathTiers": [
-      { "tier": 1, "paths": [
-        { "id": "damage", "name": "Damage +5%", "effect": { "type": "stat", "stat": "damage", "mode": "percent", "value": 0.05 }, "maxBonus": { "type": "stat", "stat": "damage", "mode": "percent", "value": 0.1 } },
-        { "id": "heavy_weapon_damage", "name": "Heavy weapon damage +10%", "effect": { "type": "special", "property": "heavyWeaponDamageBonus", "value": 0.1 }, "maxBonus": { "type": "special", "property": "aoeRadiusBonus", "value": 1 } }
-      ]},
-      { "tier": 2, "paths": [
-        { "id": "random_path", "name": "Random stat (deployment roll)", "effect": { "type": "special", "property": "randomStatPath" }, "maxBonus": { "type": "special", "property": "randomStatPathMax" } },
-        { "id": "exposed_critical_damage", "name": "Critical hits against Exposed enemies deal +25% damage", "effect": { "type": "special", "property": "exposedCriticalDamageBonus", "value": 0.25 }, "maxBonus": { "type": "special", "property": "exposeChance", "value": 0.15, "damageTaken": 0.2, "duration": 5000 } }
-      ]},
-      { "tier": 3, "paths": [
-        { "id": "missing_health_damage", "name": "10% chance to deal +1% damage per missing target health percent", "effect": { "type": "special", "property": "missingHealthDamageChance", "value": 0.1, "perMissingHealthPercent": 0.01 }, "maxBonus": { "type": "special", "property": "aoeDamageBonus", "value": 0.3 } },
-        { "id": "reload_speed", "name": "Reload speed +30%", "effect": { "type": "stat", "stat": "reloadSpeed", "mode": "percent", "value": 0.3 }, "maxBonus": { "type": "special", "property": "slowChance", "value": 0.15, "factor": 0.65, "duration": 5000 } }
-      ]}
+      {
+        "tier": 1,
+        "paths": [
+          {
+            "id": "damage",
+            "name": "Damage +5%",
+            "effect": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.05,
+              "mode": "percent"
+            },
+            "maxBonus": {
+              "type": "stat",
+              "stat": "damage",
+              "value": 0.1,
+              "mode": "percent"
+            }
+          },
+          {
+            "id": "heavy_weapon_damage",
+            "name": "Heavy weapon damage +10%",
+            "effect": {
+              "type": "special",
+              "property": "heavyWeaponDamageBonus",
+              "value": 0.1
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "aoeRadiusBonus",
+              "value": 1
+            }
+          },
+          {
+            "id": "adjacent_ally_damage",
+            "name": "On-hit effect applied: adjacent allies +5% damage (max 2, 5 seconds, non-stacking)",
+            "effect": {
+              "type": "special",
+              "property": "adjacentAllyDamageOnProc",
+              "value": 0.05,
+              "radiusTiles": 1,
+              "maxAllies": 2,
+              "duration": 5000,
+              "nonStacking": true
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "factionChanceBonus",
+              "value": 0.025
+            }
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "paths": [
+          {
+            "id": "random_path",
+            "name": "Random stat (deployment roll)",
+            "effect": {
+              "type": "special",
+              "property": "randomStatPath"
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "randomStatPathMax"
+            }
+          },
+          {
+            "id": "exposed_critical_damage",
+            "name": "Critical hits against Exposed enemies deal +25% damage",
+            "effect": {
+              "type": "special",
+              "property": "exposedCriticalDamageBonus",
+              "value": 0.25
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "exposeChance",
+              "value": 0.15,
+              "criticalChanceBonus": 0.2,
+              "duration": 5000
+            }
+          },
+          {
+            "id": "utility_bonus",
+            "name": "Utility equipment stats +5%",
+            "effect": {
+              "type": "special",
+              "property": "utilityBonusMultiplier",
+              "value": 0.05
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "repeatCritChance",
+              "value": 0.02,
+              "max": 0.2
+            }
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "paths": [
+          {
+            "id": "inherent_attack_damage",
+            "name": "Inherent attack damage +100%",
+            "effect": {
+              "type": "special",
+              "property": "inherentAttackDamageBonus",
+              "value": 1
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "inherentAttackDoubleChance",
+              "value": 0.15
+            }
+          },
+          {
+            "id": "exposed_critical_damage_2",
+            "name": "Critical hits against Exposed enemies deal +25% damage",
+            "effect": {
+              "type": "special",
+              "property": "exposedCriticalDamageBonus",
+              "value": 0.25
+            },
+            "maxBonus": {
+              "type": "special",
+              "property": "exposeChance",
+              "value": 0.15,
+              "criticalChanceBonus": 0.2,
+              "duration": 5000
+            }
+          }
+        ]
+      }
     ]
   }
 }

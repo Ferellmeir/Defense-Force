@@ -3,5 +3,8 @@
   "FAST": { "name": "Fast", "asset": "fast", "visualSize": { "width": 64, "height": 64 }, "visualOrigin": { "x": 0.5, "y": 0.9004 }, "filtering": "linear", "health": 150, "tilesPerSecond": 2, "force": 4, "armor": 0 },
   "ARMORED": { "name": "Armored", "asset": "armored", "visualSize": { "width": 64, "height": 64 }, "visualOrigin": { "x": 0.5, "y": 1 }, "filtering": "linear", "health": 400, "tilesPerSecond": 0.75, "force": 10, "armor": 25 },
   "ELITE": { "name": "Elite", "asset": "elite", "visualSize": { "width": 96, "height": 96 }, "visualOrigin": { "x": 0.5, "y": 0.9766 }, "filtering": "linear", "health": 1000, "tilesPerSecond": 1, "force": 20, "armor": 20 },
-  "BOSS": { "name": "Boss", "asset": "boss", "visualSize": { "width": 128, "height": 128 }, "visualOrigin": { "x": 0.5, "y": 0.9107 }, "filtering": "linear", "health": 20000, "tilesPerSecond": 0.75, "force": 400, "armor": 20 }
+  "BOSS": { "name": "Boss", "asset": "boss", "visualSize": { "width": 128, "height": 128 }, "visualOrigin": { "x": 0.5, "y": 0.9107 }, "filtering": "linear", "health": 20000, "tilesPerSecond": 0.75, "force": 400, "armor": 20 },
+  "SWARMER": { "name": "Swarmer", "asset": "swarmer", "visualSize": { "width": 96, "height": 96 }, "visualOrigin": { "x": 0.5, "y": 0.9766 }, "filtering": "linear", "health": 1200, "tilesPerSecond": 1, "force": 30, "armor": 25, "countsAs": 5, "miniBoss": true },
+  "ARMORER": { "name": "Armorer", "asset": "armorer", "visualSize": { "width": 96, "height": 96 }, "visualOrigin": { "x": 0.5, "y": 0.9766 }, "filtering": "linear", "health": 1500, "tilesPerSecond": 0.75, "force": 30, "armor": 75, "countsAs": 5, "miniBoss": true },
+  "GRAFTER": { "name": "Grafter", "asset": "grafter", "visualSize": { "width": 96, "height": 96 }, "visualOrigin": { "x": 0.5, "y": 0.9766 }, "filtering": "linear", "health": 2000, "tilesPerSecond": 1, "force": 30, "armor": 25, "countsAs": 5, "miniBoss": true }
 }
