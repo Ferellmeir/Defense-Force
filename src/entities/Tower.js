@@ -10,6 +10,8 @@ import { withTileChanceBonus } from '../systems/combatChance.js';
 import { getCurrentMissionRestrictions, isDebuffBanned } from '../systems/missionRestrictions.js';
 import { TILE_EFFECTS } from '../systems/tileEffects.js';
 import { activateAdjacentAllyDamageBuff } from '../systems/unitAllyEffects.js';
+import { getEffectiveAttackInterval, getEffectiveAttackRange } from '../systems/towerCombatReadout.js';
+import { canReuseWeaponAttackState, prepareWeaponAttack } from '../systems/weaponAttackState.js';
 
 const DUAL_WIELD_ATTACK_OFFSET = 120;
 
@@ -162,19 +164,7 @@ export default class Tower extends Phaser.GameObjects.Container {
     if (!this.isActive) return;
 
     this.weaponAttackStates.forEach(state => {
-      const boost = this.towerData.specialProperties?.find(property => property.property === 'waveStartAttackSpeedBoost');
-      const speedMultiplier = boost && time < (this.stimpackActiveUntil || 0)
-        ? 1 + Number(boost.value || 0) : 1;
-      const critBoost = this.towerData.specialProperties?.find(property => property.property === 'critDamageBoost');
-      const critSpeedMultiplier = critBoost && time < (this.critDamageBoostUntil || 0)
-        ? 1 + Number(critBoost.attackSpeedPenalty || 0) : 1;
-      const exposedHitBoost = this.towerData.specialProperties?.find(property => property.property === 'exposedHitAttackSpeedBoost');
-      const exposedHitMultiplier = exposedHitBoost && time < (this.exposedHitAttackSpeedUntil || 0)
-        ? 1 + Number(exposedHitBoost.value || 0) : 1;
-      const tileType = this.placementTile?.specialType;
-      state.attackInterval = Number(state.profile.attackSpeed ?? state.profile.fireRate ?? 1000)
-        / speedMultiplier / Math.max(0.01, critSpeedMultiplier) / exposedHitMultiplier * (tileType === 'tactical_indoctrination'
-          ? TILE_EFFECTS.tactical_indoctrination.attackIntervalMultiplier : 1);
+      state.attackInterval = this.getEffectiveAttackInterval(state, time);
       const wasReloading = state.ammoMagazine.reloadUntil > 0;
       state.ammoMagazine.update(time);
       if (wasReloading && !state.ammoMagazine.reloadUntil) {
@@ -194,9 +184,7 @@ export default class Tower extends Phaser.GameObjects.Container {
       enemies.forEach(enemy => {
         if (this.isValidTarget(enemy, state.profile.range, state.profile.attackType)) this.tryMarkEnemy(enemy);
       });
-      const activeTileType = this.placementTile?.specialType;
-      const range = Number(state.profile.range || 0) + (activeTileType === 'snipers_nest'
-        ? TILE_EFFECTS.snipers_nest.rangeBonusTiles * (this.scene.mapManager?.getCurrentMap?.()?.tileSize || 64) : 0);
+      const range = this.getEffectiveAttackRange(state);
       this.findTarget(enemies, range, state.profile.attackType);
       state.target = this.target;
       if (state.target && time >= state.lastFireTime + state.attackInterval) {
@@ -362,8 +350,10 @@ export default class Tower extends Phaser.GameObjects.Container {
    * @param {number} time - Current time
    */
   fireAtTarget(time, attackState = this.weaponAttackStates[0], options = {}) {
-    if (!attackState || (!options.freeAttack && !attackState.ammoMagazine.canFire(time))) return;
-    if (!options.freeAttack && !attackState.ammoMagazine.consumeShot(time)) return;
+    // Every route (scheduled, bonus, or kill-triggered) must respect this
+    // weapon's magazine state. Free attacks still avoid consuming a shot, but
+    // cannot bypass an active reload.
+    if (!prepareWeaponAttack(attackState, time, options)) return;
 
     attackState.lastFireTime = time;
     if (attackState === this.weaponAttackStates[0]) this.lastFireTime = time;
@@ -506,6 +496,14 @@ export default class Tower extends Phaser.GameObjects.Container {
     return this.ammoMagazine?.getReloadRemaining(time) ?? 0;
   }
 
+  getEffectiveAttackInterval(state, time = this.scene?.gameTime ?? this.scene?.time?.now ?? 0) {
+    return getEffectiveAttackInterval(this, state, time);
+  }
+
+  getEffectiveAttackRange(state) {
+    return getEffectiveAttackRange(this, state);
+  }
+
   consumeAmmo(time) {
     return Boolean(this.ammoMagazine?.consumeShot(time));
   }
@@ -518,7 +516,8 @@ export default class Tower extends Phaser.GameObjects.Container {
     this.weaponAttackStates = profiles.map((profile, index) => {
       const attackInterval = Number(profile.attackSpeed ?? profile.fireRate ?? 1000);
       const previous = previousStates[index];
-      if (previous) {
+      const sameWeapon = canReuseWeaponAttackState(previous, profile);
+      if (sameWeapon) {
         previous.profile = profile;
         previous.attackInterval = attackInterval;
         if (profile.reloadSpeed !== undefined) {

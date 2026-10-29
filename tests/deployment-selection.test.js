@@ -76,28 +76,26 @@ test('equipment panel rows follow the currently selected deployment and show eac
     getItemDefinition: id => items[id],
   };
 
-  const first = getDeploymentEquipmentRows({ unitId: 'UNIT_A' }, rpg);
+  const first = getDeploymentEquipmentRows({ unitId: 'UNIT_A', ...units.UNIT_A }, rpg);
   assert.deepEqual(first.map(row => [row.slot, row.item?.name || null]), [
     ['right', 'Pistol'], ['left', null], ['utility', 'Scanner'], ['augment', 'Optic'],
   ]);
-  const second = getDeploymentEquipmentRows({ unitId: 'UNIT_B' }, rpg);
+  const second = getDeploymentEquipmentRows({ unitId: 'UNIT_B', ...units.UNIT_B }, rpg);
   assert.deepEqual(second.map(row => [row.slot, row.item?.name || null]), [
     ['right', null], ['left', 'Blade'], ['utility', null], ['augment', null],
   ]);
   assert.deepEqual(getDeploymentEquipmentRows(null, rpg), []);
 });
 
-test('equipment panel reflects equip and removal immediately from the owned loadout', () => {
-  const owned = { equipped: { right: null, left: null, utility: null }, augments: [] };
+test('equipment panel reflects equip and removal immediately from the selected deployment loadout', () => {
+  const deployment = { unitId: 'UNIT', equipped: { right: null, left: null, utility: null }, augments: [] };
   const rpg = {
     getOwnedUnit: () => owned,
     getItemDefinition: id => ({ id, name: id.toUpperCase() }),
   };
-  const deployment = { unitId: 'UNIT' };
-
   assert.equal(getDeploymentEquipmentRows(deployment, rpg)[0].item, null);
-  owned.equipped.right = 'pistol';
+  deployment.equipped.right = 'pistol';
   assert.equal(getDeploymentEquipmentRows(deployment, rpg)[0].item.name, 'PISTOL');
-  owned.equipped.right = null;
+  deployment.equipped.right = null;
   assert.equal(getDeploymentEquipmentRows(deployment, rpg)[0].item, null);
 });

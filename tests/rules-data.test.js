@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import RPGManager from '../src/systems/RPGManager.js';
-import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowFlipX } from '../src/utils/pathTiles.js';
+import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowRotation } from '../src/utils/pathTiles.js';
 import EconomyManager from '../src/systems/EconomyManager.js';
 import { getProjectileSpeed, PROJECTILE_SPEED_TILES_PER_SECOND } from '../src/systems/ProjectileSpeeds.js';
 
@@ -108,11 +108,22 @@ test('directed visual path tiles follow straight segments, turns, and the exit d
   );
 });
 
-test('path arrow horizontal flips select the closest available projected orientation', () => {
-  assert.equal(getProjectedPathArrowFlipX(1, 0), false);
-  assert.equal(getProjectedPathArrowFlipX(0, 1), true);
-  assert.equal(getProjectedPathArrowFlipX(-1, 0), true);
-  assert.equal(getProjectedPathArrowFlipX(0, -1), false);
+test('path arrows rotate to all four actual projected travel directions', () => {
+  const quarterTurn = Math.PI / 2;
+  assert.equal(getProjectedPathArrowRotation(1, 0), quarterTurn); // east
+  assert.equal(getProjectedPathArrowRotation(0, 1), Math.PI); // south
+  assert.equal(getProjectedPathArrowRotation(-1, 0), -quarterTurn); // west
+  assert.equal(getProjectedPathArrowRotation(0, -1), 0); // north
+});
+
+test('a repeatedly crossed path tile uses the direction from its final crossing', () => {
+  const path = [
+    { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 },
+    { x: 1, y: 2 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 },
+  ];
+  const repeated = getDirectedPathTiles(path).find(tile => tile.x === 2 && tile.y === 0);
+  assert.deepEqual(repeated, { x: 2, y: 0, nextX: 3, nextY: 0 });
+  assert.equal(getDirectedPathTiles(path).filter(tile => tile.x === 2 && tile.y === 0).length, 1);
 });
 
 test('each battlefield map visualizes every logical route tile and points its exit arrow outward', () => {

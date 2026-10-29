@@ -22,7 +22,7 @@ export default class Projectile extends Phaser.GameObjects.Image {
     // Set projectile properties
     this.setScale(0.5);
     this.setVisible(false);
-    this.visual = scene.add.image(x, y, type).setScale(0.5).setDepth(12);
+    this.visual = scene.add.image(x, y, type).setDisplaySize(16, 16).setDepth(12);
 
     // Calculate angle to target
     this.updateAngle();

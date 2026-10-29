@@ -8,6 +8,8 @@ import { getMissionRestrictionFailure } from '../systems/missionRestrictions.js'
 import { createDeploymentSelection, handleDeploymentItemPointerDown } from '../systems/deploymentSelection.js';
 import { getDeploymentEquipmentRows } from '../systems/deploymentEquipmentPanel.js';
 import { getDeploymentUpgradeOverview } from '../systems/deploymentUpgradeOverview.js';
+import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
+import { getUnitRankProgress } from '../systems/unitRankProgress.js';
 
 const GOLD = '#ffe27a';
 const PALE = '#d8e6ef';
@@ -29,7 +31,7 @@ export default class DeploymentScene extends Phaser.Scene {
     const savedLineup = this.rpgManager.state.deploymentLineup;
     const previous = this.getEligibleRoster(this.registry.get('missionRoster'));
     this.lineup = Array.isArray(savedLineup) && savedLineup.some(Boolean)
-      ? savedLineup.slice(0, 5).map((id, index) => id ? this.makeDeployment(id, `lineup-${index}`) : null)
+      ? savedLineup.slice(0, 5).map((entry, index) => entry ? this.makeDeployment(typeof entry === 'string' ? entry : entry.unitId, entry.deploymentId || `lineup-${index}`, entry) : null)
       : Array.from({ length: 5 }, (_, index) => previous[index] || null);
     if (!this.lineup.some(Boolean)) {
       this.lineup = Array.from({ length: 5 }, (_, index) => {
@@ -50,8 +52,7 @@ export default class DeploymentScene extends Phaser.Scene {
     this.nextInventoryInstanceKey = 1;
     this.activeEquipSlot = 'right';
     this.handSlotExplicit = false;
-    this.cameras.main.setBackgroundColor('#101923');
-    this.add.rectangle(640, 360, 1280, 720, 0x101923, 0.98);
+    this.cameras.main.setBackgroundColor('rgba(0, 0, 0, 0)');
     this.add.image(640, 360, 'ui_panel_9').setDisplaySize(1280, 720).setAlpha(0.15);
     this.add.text(24, 18, 'DEPLOYMENT & LOADOUT', { fontSize: '25px', color: GOLD, fontStyle: 'bold' });
     this.addButton(1110, 20, this.registry.get('deploymentReturnScene') === 'MainHubScene' ? 'Back to Hub' : 'Back to Map', () => this.returnFromScreen());
@@ -60,19 +61,19 @@ export default class DeploymentScene extends Phaser.Scene {
       if (!missionSelected) { this.scene.start('MapSelectScene'); return; }
       if (this.prepareMission()) this.scene.start('GameScene');
     });
-    this.add.rectangle(640, 124, 1230, 142, 0x0b1722, 0.96).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 124, 1230, 142, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.text(28, 48, 'LINEUP', { fontSize: '15px', color: GOLD, fontStyle: 'bold' });
     this.add.text(1010, 52, 'Five deployment slots', { fontSize: '12px', color: MUTED });
     this.slotObjects = [];
     for (let i = 0; i < 5; i += 1) this.drawSlot(i);
 
-    this.add.rectangle(640, 326, 1230, 180, 0x0b1722, 0.94).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 326, 1230, 180, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.text(28, 204, 'FILTERS', { fontSize: '15px', color: GOLD, fontStyle: 'bold' });
     this.filterControls = this.add.container(24, 230);
     this.drawFilters();
     this.detailTitle = this.add.text(300, 205, 'Select a lineup slot or inventory item', { fontSize: '18px', color: GOLD, fontStyle: 'bold' });
     this.detailText = this.add.text(300, 234, '', { fontSize: '12px', color: PALE, wordWrap: { width: 700 }, lineSpacing: 2, fixedWidth: 700, fixedHeight: 62 });
-    this.add.rectangle(640, 359, 704, 112, 0x101c28, 0.98).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 359, 704, 112, 0x101c28, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.text(300, 304, 'UPGRADE PATHS', { fontSize: '11px', color: GOLD, fontStyle: 'bold' });
     this.upgradePathText = this.add.text(300, 322, 'Select a unit to inspect its full progression.', {
       fontSize: '10px', color: PALE, wordWrap: { width: 680 }, lineSpacing: 2, fixedWidth: 680,
@@ -86,7 +87,7 @@ export default class DeploymentScene extends Phaser.Scene {
     this.slotControls = this.add.container(1020, 205);
     this.drawSlotControls();
 
-    this.add.rectangle(640, 598, 1230, 224, 0x0b1722, 0.96).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 598, 1230, 224, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.text(24, 488, 'OWNED INVENTORY', { fontSize: '15px', color: GOLD, fontStyle: 'bold' });
     this.modeControls = this.add.container(200, 484);
     this.drawModeControls();
@@ -110,7 +111,7 @@ export default class DeploymentScene extends Phaser.Scene {
     const x = 30 + index * 192;
     const y = 82;
     const deployment = this.lineup[index];
-    const box = this.add.rectangle(x + 82, y + 43, 170, 82, 0x192b3a, 0.98)
+    const box = this.add.rectangle(x + 82, y + 43, 170, 82, 0x192b3a, PANEL_ALPHA)
       .setStrokeStyle(2, index === this.activeSlot ? 0xffe27a : deployment ? 0x52788e : 0x53616b)
       .setInteractive({ useHandCursor: true });
     box.on('pointerdown', () => { this.activeSlot = index; this.selection.clear(); this.drawSlots(); this.drawSlotControls(); this.updateDetails(); });
@@ -225,7 +226,7 @@ export default class DeploymentScene extends Phaser.Scene {
     entries.slice(this.page * PAGE_SIZE, (this.page + 1) * PAGE_SIZE).forEach((item, index) => {
       const col = index % 5, row = Math.floor(index / 5), x = col * 238, y = row * 88;
       const selected = this.selection.isSelected(item);
-      const card = this.add.rectangle(x + 108, y + 39, 224, 76, 0x192b3a, 0.98).setStrokeStyle(1, selected ? 0xffe27a : 0x34576b);
+      const card = this.add.rectangle(x + 108, y + 39, 224, 76, 0x192b3a, PANEL_ALPHA).setStrokeStyle(1, selected ? 0xffe27a : 0x34576b);
       this.inventoryGrid.add(card);
       const icon = item.kind === 'unit' ? `deployment_unit_${item.id}` : `ui_icon_${String(item.damageType || 'physical').toLowerCase()}`;
       if (this.textures.exists(icon)) {
@@ -307,6 +308,22 @@ export default class DeploymentScene extends Phaser.Scene {
     if (selectedUnitId !== this.upgradeOverviewUnitId) this.upgradePathScroll = 0;
     this.upgradeOverviewUnitId = selectedUnitId || null;
     this.updateUpgradePaths();
+    if (selectedItem?.kind === 'unit') {
+      const definition = this.rpgManager.getUnitDefinition(selectedItem.id);
+      const owned = this.rpgManager.getOwnedUnit(selectedItem.id);
+      if (!definition || !owned) {
+        this.detailTitle.setText(`${selectedItem.name || selectedItem.id} · Ownership unavailable`);
+        this.detailText.setText('This unit is not currently owned and cannot be assigned.');
+        return;
+      }
+      const { stars, extraCopies, copiesRequired, maxed } = getUnitRankProgress(owned);
+      const progress = !maxed ? `${extraCopies}/${copiesRequired} extra copies toward the next star`
+        : 'Maximum rank · no more copies needed';
+      this.detailTitle.setText(`${definition.name} · ${displayFactionName(definition.faction)} · ${stars}★`);
+      this.detailText.setText(`Unit rank: ${stars} of 5 stars\n${progress}${stars === 5
+        ? `\nAdditional passive: ${definition.extraPassive?.name || definition.additionalPassive?.name || 'unlocked; no extra passive is assigned in unit data'}` : ''}`);
+      return;
+    }
     if (selectedItem?.kind === 'equipment') {
       const item = selectedItem;
       const stats = this.effectSummary(item) || item.description || 'No listed stat effects';
@@ -320,7 +337,7 @@ export default class DeploymentScene extends Phaser.Scene {
       return;
     }
     const definition = this.rpgManager.getUnitDefinition(deployment.unitId);
-    const owned = this.rpgManager.getOwnedUnit(deployment.unitId);
+    const owned = deployment;
     const equipped = owned.equipped || {};
     const augments = owned.augments || [];
     const base = this.rpgManager.getEffectiveStats(deployment.unitId, { equipped: {}, equipment: { weapons: [], utility: null }, augments: [], veterancy: 0, selectedPaths: {} });
@@ -337,9 +354,15 @@ export default class DeploymentScene extends Phaser.Scene {
     const augment = augments.length ? this.rpgManager.getItemDefinition(augments[0]) : null;
     const augmentRule = augment ? (['RARE', 'EXOTIC', 'LEGENDARY'].includes(String(augment.rarity).toUpperCase())
       ? `Remove for ${fmt(augment.cost)} Cr` : 'Removal destroys this common/uncommon augment') : 'One augment slot is available';
-    this.detailTitle.setText(`${definition.name} · ${displayFactionName(definition.faction)} · Rank ${owned.stars || 0}`);
+    const persistentOwned = this.rpgManager.getOwnedUnit(deployment.unitId);
+    const stars = getUnitRankProgress(persistentOwned)?.stars ?? 0;
+    this.detailTitle.setText(`${definition.name} · ${displayFactionName(definition.faction)} · ${stars}★`);
     const augmentDetails = augment ? this.effectSummary(augment) : '';
-    this.detailText.setText(`${statRows}\nPassive: ${definition.passive?.name || 'None'}${definition.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''}${definition.passive?.description ? ` — ${definition.passive.description}` : ''}${definition.passive?.effects?.length ? ` (${definition.passive.effects.map(effect => `${effect.stat} ${effect.mode === 'percent' ? `${effect.value >= 0 ? '+' : ''}${fmt(effect.value * 100)}%` : `${effect.value >= 0 ? '+' : ''}${fmt(effect.value)}`}`).join(', ')})` : ''}\n${gear}\nAugment: ${augmentNames}${augmentDetails ? ` (${augmentDetails})` : ''} · ${augmentRule}`);
+    const extraPassive = stars === 5 ? definition.extraPassive || definition.additionalPassive : null;
+    const extraPassiveLine = stars === 5
+      ? `\nAdditional passive: ${extraPassive?.name || 'unlocked; no extra passive is assigned in unit data'}`
+      : '';
+    this.detailText.setText(`${statRows}\nPassive: ${definition.passive?.name || 'None'}${definition.passive?.unimplemented ? ' (unimplemented: effect needs a definition)' : ''}${definition.passive?.description ? ` — ${definition.passive.description}` : ''}${definition.passive?.effects?.length ? ` (${definition.passive.effects.map(effect => `${effect.stat} ${effect.mode === 'percent' ? `${effect.value >= 0 ? '+' : ''}${fmt(effect.value * 100)}%` : `${effect.value >= 0 ? '+' : ''}${fmt(effect.value)}`}`).join(', ')})` : ''}${extraPassiveLine}\n${gear}\nAugment: ${augmentNames}${augmentDetails ? ` (${augmentDetails})` : ''} · ${augmentRule}`);
   }
 
   updateUpgradePaths() {
@@ -386,10 +409,10 @@ export default class DeploymentScene extends Phaser.Scene {
     if (!deployment || !item || item.kind !== 'equipment') { this.status.setText('Select a unit and an owned equipment item first.'); return; }
     const equipSlot = this.activeEquipSlot === 'right' && !this.handSlotExplicit ? 'auto' : this.activeEquipSlot;
     const success = this.activeEquipSlot === 'augment'
-      ? this.rpgManager.equipAugment(deployment.unitId, item.id)
-      : this.rpgManager.equip(deployment.unitId, item.id, equipSlot);
+      ? this.rpgManager.equipAugment(deployment.unitId, item.id, deployment)
+      : this.rpgManager.equip(deployment.unitId, item.id, equipSlot, deployment);
     this.syncLoadouts();
-    const owned = this.rpgManager.getOwnedUnit(deployment.unitId);
+    const owned = deployment;
     const noAutomaticHandAvailable = equipSlot === 'auto' && item.type === 'weapon' && item.hands === 1
       && owned?.equipped?.left && owned?.equipped?.right;
     this.status.setText(success ? `${item.name} equipped.` : noAutomaticHandAvailable
@@ -402,20 +425,20 @@ export default class DeploymentScene extends Phaser.Scene {
     const deployment = this.lineup[this.activeSlot];
     if (!deployment) return;
     const success = this.activeEquipSlot === 'augment'
-      ? (this.rpgManager.getOwnedUnit(deployment.unitId).augments || []).some(id => this.rpgManager.unequipAugment(deployment.unitId, id))
-      : this.rpgManager.unequip(deployment.unitId, this.activeEquipSlot);
+      ? (deployment.augments || []).some(id => this.rpgManager.unequipAugment(deployment.unitId, id, deployment))
+      : this.rpgManager.unequip(deployment.unitId, this.activeEquipSlot, deployment);
     this.syncLoadouts();
     this.status.setText(success ? 'Loadout updated.' : 'Unable to remove this item; check the augment removal rule and available credits.');
     this.updateDetails(); this.drawInventory();
   }
 
   syncLoadouts() {
-    this.lineup = this.lineup.map((entry, index) => entry ? this.makeDeployment(entry.unitId, `lineup-${index}`) : null);
+    this.lineup = this.lineup.map((entry, index) => entry ? this.makeDeployment(entry.unitId, entry.deploymentId || `lineup-${index}`, entry) : null);
     this.persistLineup(); this.drawSlots(); this.drawSlotControls();
   }
 
   persistLineup() {
-    this.rpgManager.setDeploymentLineup(this.lineup.map(entry => entry?.unitId || null));
+    this.rpgManager.setDeploymentLineup(this.lineup);
     this.registry.set('missionRoster', this.lineup.filter(Boolean));
   }
 
@@ -423,10 +446,11 @@ export default class DeploymentScene extends Phaser.Scene {
     return { weapons: ['left', 'right'].map(slot => equipped[slot] ? this.rpgManager.getItemDefinition(equipped[slot]) : null), utility: equipped.utility ? this.rpgManager.getItemDefinition(equipped.utility) : null };
   }
 
-  makeDeployment(unitId, deploymentId) {
+  makeDeployment(unitId, deploymentId, source = null) {
     const owned = this.rpgManager.getOwnedUnit(unitId);
-    const equipped = { ...owned.equipped };
-    return { deploymentId, unitId, equipped, augments: [...(owned.augments || [])], equipment: this.snapshotEquipment(equipped) };
+    const equipped = { ...(source?.equipped || owned.equipped) };
+    const augments = [...(source?.augments || owned.augments || [])];
+    return { deploymentId, unitId, equipped, augments, equipment: this.snapshotEquipment(equipped) };
   }
 
   getEligibleRoster(roster) {
@@ -439,7 +463,7 @@ export default class DeploymentScene extends Phaser.Scene {
   prepareMission() {
     const mission = this.registry.get('selectedMission');
     if (!mission) { this.status.setText('Select an available mission before launching.'); return false; }
-    const selected = this.lineup.filter(Boolean).map((entry, index) => this.makeDeployment(entry.unitId, `mission-${index}`));
+    const selected = this.lineup.filter(Boolean).map((entry, index) => this.makeDeployment(entry.unitId, `mission-${index}`, entry));
     if (!this.rpgManager.setMissionRoster(selected)) { this.status.setText('Select at least one owned unit.'); return false; }
     const restrictionFailure = getMissionRestrictionFailure(selected, mission, this.rpgManager);
     if (restrictionFailure) { this.status.setText(restrictionFailure); return false; }

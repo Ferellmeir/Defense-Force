@@ -5,6 +5,7 @@ import { rarityFrame, preloadUiAssets } from '../helpers/uiAssets.js';
 import RPGManager from '../systems/RPGManager.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { FACTION_PAGE_BACKGROUNDS } from '../utils/screenBackgrounds.js';
+import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
 
 const COLORS = { gold: '#ffe27a', pale: '#d8e6ef', muted: '#91a4b5', teal: 0x245b66, panel: 0x142536 };
 
@@ -20,8 +21,7 @@ export default class MainHubScene extends Phaser.Scene {
 
   create() {
     this.rpgManager = new RPGManager(this);
-    this.cameras.main.setBackgroundColor('#101923');
-    this.add.rectangle(640, 360, 1280, 720, 0x101923, 0.98);
+    this.cameras.main.setBackgroundColor('rgba(0, 0, 0, 0)');
     this.add.image(640, 360, 'ui_panel_9').setDisplaySize(1280, 720).setAlpha(0.2);
     this.setupLineup();
     this.setupStatusBar();
@@ -32,7 +32,7 @@ export default class MainHubScene extends Phaser.Scene {
   }
 
   setupStatusBar() {
-    this.add.rectangle(640, 43, 1236, 64, 0x0b1722, 0.98).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 43, 1236, 64, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.image(46, 42, 'ui_icon_credits').setDisplaySize(27, 32);
     this.creditLabel = this.add.text(67, 27, `Credits  ${fmt(this.rpgManager.state.credits)}`, {
       fontSize: '19px', color: COLORS.gold, fontStyle: 'bold',
@@ -59,7 +59,7 @@ export default class MainHubScene extends Phaser.Scene {
     for (let index = 0; index < 5; index += 1) {
       const x = 26 + index * 84;
       const y = 166;
-      const card = this.add.rectangle(x + 36, y + 66, 76, 138, 0x1b2c3b, 0.95)
+      const card = this.add.rectangle(x + 36, y + 66, 76, 138, 0x1b2c3b, PANEL_ALPHA)
         .setStrokeStyle(1, this.lineup[index] ? 0x52788e : 0x53616b);
       if (this.lineup[index]) {
         const entry = this.lineup[index];
@@ -94,8 +94,10 @@ export default class MainHubScene extends Phaser.Scene {
     const configured = this.rpgManager.state.deploymentLineup;
     if (Array.isArray(configured) && configured.some(Boolean)) {
       const lineup = Array.from({ length: 5 }, (_, index) => {
-        const unitId = configured[index];
-        return unitId && this.rpgManager.getOwnedUnit(unitId) ? this.makeDeployment(unitId, `hub-${index}`) : null;
+        const entry = configured[index];
+        const unitId = typeof entry === 'string' ? entry : entry?.unitId;
+        return unitId && this.rpgManager.getOwnedUnit(unitId)
+          ? this.makeDeployment(unitId, entry?.deploymentId || `hub-${index}`, entry) : null;
       });
       this.registry.set('missionRoster', lineup.filter(Boolean));
       return lineup;
@@ -111,13 +113,13 @@ export default class MainHubScene extends Phaser.Scene {
     return lineup.slice(0, 5);
   }
 
-  makeDeployment(unitId, deploymentId) {
+  makeDeployment(unitId, deploymentId, source = null) {
     const owned = this.rpgManager.getOwnedUnit(unitId);
-    const equipped = { ...(owned?.equipped || {}) };
+    const equipped = { ...(source?.equipped || owned?.equipped || {}) };
     const weapons = ['left', 'right'].map(slot => equipped[slot]
       ? this.rpgManager.getItemDefinition(equipped[slot]) : null);
     return {
-      deploymentId, unitId, equipped, augments: [...(owned?.augments || [])],
+      deploymentId, unitId, equipped, augments: [...(source?.augments || owned?.augments || [])],
       equipment: {
         weapons,
         utility: equipped.utility ? this.rpgManager.getItemDefinition(equipped.utility) : null,
@@ -171,7 +173,7 @@ export default class MainHubScene extends Phaser.Scene {
       const row = Math.floor(index / 4);
       const x = 470 + col * 195;
       const y = 133 + row * 160;
-      const bg = this.add.rectangle(x + 90, y + 67, 184, 148, 0x192b3a, 0.98)
+      const bg = this.add.rectangle(x + 90, y + 67, 184, 148, 0x192b3a, PANEL_ALPHA)
         .setStrokeStyle(1, 0x34576b).setInteractive({ useHandCursor: true });
       const frame = this.add.image(x + 32, y + 47, rarityFrame(item.rarity)).setDisplaySize(54, 66);
       const iconKey = this.getItemIcon(item);
@@ -225,7 +227,7 @@ export default class MainHubScene extends Phaser.Scene {
   }
 
   setupDetails() {
-    this.add.rectangle(640, 540, 1236, 160, 0x0b1722, 0.98).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 540, 1236, 160, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.detailTitle = this.add.text(32, 468, 'DETAILS', { fontSize: '15px', color: COLORS.gold, fontStyle: 'bold' });
     this.detailText = this.add.text(32, 491, 'Hover over credits, influence, a lineup slot, or a store option to inspect it.', {
       fontSize: '12px', color: COLORS.pale, wordWrap: { width: 1205 }, lineSpacing: 2,
@@ -367,7 +369,7 @@ export default class MainHubScene extends Phaser.Scene {
   }
 
   setupNavigation() {
-    this.add.rectangle(640, 672, 1236, 70, 0x0b1722, 0.98).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 672, 1236, 70, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     const labels = [
       { text: 'Settings', enabled: false },
       { text: 'Missions', enabled: true, action: () => this.scene.start('MapSelectScene') },

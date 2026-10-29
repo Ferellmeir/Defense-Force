@@ -3,6 +3,7 @@ import { fmt } from '../utils/formatNumber.js';
 import RPGManager from '../systems/RPGManager.js';
 import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { displayFactionName } from '../utils/factions.js';
+import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
 
 export default class StoreScene extends Phaser.Scene {
   constructor() { super('StoreScene'); }
@@ -12,7 +13,6 @@ export default class StoreScene extends Phaser.Scene {
   create() {
     this.rpgManager = new RPGManager(this);
     this.page = 0;
-    this.add.rectangle(640, 360, 1280, 720, 0x101923, 0.98);
     this.add.text(640, 38, 'Store', { fontSize: '36px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
     this.add.image(27, 101, 'ui_icon_credits').setDisplaySize(22, 28);
     this.balance = this.add.text(45, 90, '', { fontSize: '20px', color: '#ffe27a' });
@@ -73,6 +73,7 @@ export default class StoreScene extends Phaser.Scene {
     entries.slice(this.page * 6, this.page * 6 + 6).forEach((item, index) => {
       const x = index % 2 ? 670 : 40;
       const y = 130 + Math.floor(index / 2) * 170;
+      const panel = this.add.rectangle(x + 285, y + 76, 570, 148, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
       const frame = this.add.image(x + 35, y + 76, rarityFrame(item.rarity)).setDisplaySize(62, 82);
       const condition = (item.statusEffects || []).map(effect => effect.type).find(type =>
         ['acid', 'bleeding', 'poison', 'slowed', 'exposed'].includes(String(type).toLowerCase()));
@@ -95,7 +96,7 @@ export default class StoreScene extends Phaser.Scene {
         this.render();
       });
       this.setButtonEnabled(buy, affordable);
-      this.rows.push(frame, ...(portrait ? [portrait] : []), name, detail, buy);
+      this.rows.push(panel, frame, ...(portrait ? [portrait] : []), name, detail, buy);
     });
   }
 

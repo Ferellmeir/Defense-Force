@@ -43,6 +43,7 @@ function createDeploymentFixture(force = 10) {
   const persistentBefore = JSON.parse(JSON.stringify(rpgManager.state));
   let forceSpendCalls = 0;
   let towerCreateCalls = 0;
+  const messages = [];
   const group = {
     children: [],
     add(tower) { this.children.push(tower); },
@@ -53,6 +54,7 @@ function createDeploymentFixture(force = 10) {
   const scene = {
     add: { group: () => group },
     rpgManager,
+    events: { emit: (event, message) => { if (event === 'showMessage') messages.push(message); } },
     registry: { get: key => key === 'missionRoster' ? ['UNIT'] : null },
     mapManager: { getCurrentMap: () => ({ tileSize: 64 }) },
     pathTileKeys: new Set(),
@@ -109,6 +111,7 @@ function createDeploymentFixture(force = 10) {
     makeTile,
     getForceSpendCalls: () => forceSpendCalls,
     getTowerCreateCalls: () => towerCreateCalls,
+    messages,
     group,
   };
 }
@@ -149,6 +152,44 @@ test('automatic first one-handed weapon uses left when the right hand is already
 
   assert.equal(manager.equip('UNIT', 'pistol', 'auto'), true);
   assert.deepEqual(owned.equipped, { left: 'pistol', right: 'sidearm', utility: null });
+});
+
+test('automatic one-handed melee weapon replaces a mirrored two-handed starter weapon', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.blade = { id: 'blade', type: 'weapon', hands: 1, attackType: 'melee' };
+  manager.state.inventory.push({ itemId: 'blade' });
+  const owned = manager.getOwnedUnit('UNIT');
+  owned.equipped = { left: 'rifle', right: 'rifle', utility: 'gear' };
+
+  assert.equal(manager.equip('UNIT', 'blade', 'auto'), true);
+  assert.deepEqual(owned.equipped, { left: null, right: 'blade', utility: 'gear' });
+  assert.equal(manager.saveCount, 1);
+});
+
+test('invalid or unowned melee equipment is rejected without changing the loadout', () => {
+  const manager = createRpgFixture();
+  manager.equipment.items.invalid_blade = { id: 'invalid_blade', type: 'weapon', hands: 0, attackType: 'melee' };
+  manager.equipment.items.unowned_blade = { id: 'unowned_blade', type: 'weapon', hands: 1, attackType: 'melee' };
+  const before = structuredClone(manager.getOwnedUnit('UNIT').equipped);
+
+  assert.equal(manager.equip('UNIT', 'invalid_blade', 'left'), false);
+  assert.equal(manager.equip('UNIT', 'unowned_blade', 'left'), false);
+  assert.deepEqual(manager.getOwnedUnit('UNIT').equipped, before);
+  assert.equal(manager.saveCount, 0);
+});
+
+test('weapon restrictions and two-handed slot behavior still apply to melee equipment', () => {
+  const manager = createRpgFixture();
+  manager.units.UNIT.weaponRestrictions = ['heavy'];
+  manager.equipment.items.blade = { id: 'blade', type: 'weapon', hands: 1, attackType: 'melee' };
+  manager.equipment.items.yari = { id: 'yari', type: 'weapon', hands: 2, attackType: 'melee' };
+  manager.state.inventory.push({ itemId: 'blade' }, { itemId: 'yari' });
+  const owned = manager.getOwnedUnit('UNIT');
+
+  assert.equal(manager.equip('UNIT', 'blade', 'left'), false);
+  assert.equal(manager.equip('UNIT', 'yari', 'auto'), true);
+  assert.deepEqual(owned.equipped, { left: 'yari', right: 'yari', utility: 'gear' });
+  assert.equal(manager.equip('UNIT', 'blade', 'left'), false);
 });
 
 test('explicit hand selection takes priority over automatic placement', () => {
@@ -212,6 +253,22 @@ test('insufficient Force leaves the tile, deployment state, and roster unchanged
   assert.equal(tile.hasTower, false);
   assert.equal(fixture.group.children.length, 0);
   assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+  assert.deepEqual(fixture.messages, ['Not enough Force. 15 Force required.']);
+});
+
+test('deployment validation reports the exact tile or mission restriction that rejected placement', () => {
+  const fixture = createDeploymentFixture(50);
+  const tile = fixture.makeTile();
+  fixture.scene.pathTileKeys.add('1,1');
+  assert.equal(fixture.manager.getDeploymentFailure('UNIT', tile), 'Units cannot be placed on enemy paths.');
+  fixture.scene.pathTileKeys.clear();
+  fixture.scene.mapManager.getCurrentMap = () => ({ placementRestrictions: [{ x: 1, y: 1, width: 1, height: 1 }] });
+  assert.equal(fixture.manager.getDeploymentFailure('UNIT', tile), 'Units cannot be placed on reserved terrain.');
+  fixture.scene.mapManager.getCurrentMap = () => ({ tileSize: 64, placementRestrictions: [] });
+  fixture.rpgManager.units.UNIT.faction = 'Sewer Rats';
+  fixture.scene.registry.get = key => key === 'missionRoster' ? ['UNIT'] : key === 'selectedMission'
+    ? { restrictions: [{ kind: 'faction', faction: 'Sewer Rats', label: 'Sewer Rats are restricted' }] } : null;
+  assert.equal(fixture.manager.getDeploymentFailure('UNIT', tile), 'Sewer Rats are restricted');
 });
 
 test('successful deployments deduct the configured Force cost once per deployment', () => {
@@ -246,6 +303,29 @@ test('duplicate unit deployments preserve separate loadouts through tower creati
   assert.deepEqual(received.equipped, second.equipped);
   assert.equal(received.equipment.utility.id, 'gear');
   assert.deepEqual(fixture.rpgManager.state, fixture.persistentBefore);
+});
+
+test('same-type lineup instances keep independent loadouts when equipped and saved', () => {
+  const manager = createRpgFixture();
+  const first = { deploymentId: 'first', unitId: 'UNIT', equipped: { left: 'sidearm', right: null, utility: null }, augments: [] };
+  const second = { deploymentId: 'second', unitId: 'UNIT', equipped: { left: 'rifle', right: 'rifle', utility: 'gear' }, augments: [] };
+  manager.equipment.items.sidearm.hands = 1;
+  manager.equipment.items.rifle.hands = 2;
+  assert.equal(manager.setDeploymentLineup([first, second]), true);
+
+  const savedFirst = manager.state.deploymentLineup[0];
+  const savedSecond = manager.state.deploymentLineup[1];
+  assert.notEqual(savedFirst.equipped, savedSecond.equipped);
+  assert.equal(manager.equip('UNIT', 'sidearm', 'right', savedFirst), true);
+  assert.equal(manager.unequip('UNIT', 'utility', savedFirst), true);
+  assert.deepEqual(savedSecond.equipped, { left: 'rifle', right: 'rifle', utility: 'gear' });
+  assert.deepEqual(savedSecond.augments, []);
+
+  manager.setDeploymentLineup([savedFirst, savedSecond]);
+  assert.deepEqual(manager.state.deploymentLineup.slice(0, 2).map(entry => entry.equipped), [
+    { left: 'sidearm', right: 'sidearm', utility: null },
+    { left: 'rifle', right: 'rifle', utility: 'gear' },
+  ]);
 });
 
 test('a rejected Force spend creates no deployed or tile state', () => {

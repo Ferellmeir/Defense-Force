@@ -7,7 +7,7 @@ export const DEPLOYMENT_EQUIPMENT_SLOTS = [
 
 export function getDeploymentEquipmentRows(deployment, rpgManager) {
   if (!deployment) return [];
-  const owned = rpgManager.getOwnedUnit(deployment.unitId);
+  const owned = deployment;
   if (!owned) return [];
   return DEPLOYMENT_EQUIPMENT_SLOTS.map(({ slot, label }) => {
     const itemId = slot === 'augment' ? owned.augments?.[0] || null : owned.equipped?.[slot] || null;

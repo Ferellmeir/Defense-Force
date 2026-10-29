@@ -8,6 +8,8 @@ import { MISSION_TYPE_NAMES } from '../systems/missionBoard.js';
 import { getFactionEnvironment } from '../systems/missionEnvironments.js';
 import { getMissionCardBounds, getMissionGridLayout } from '../systems/missionScreenLayout.js';
 import { MISSION_SELECTION_BACKGROUND, useSceneBackground } from '../utils/screenBackgrounds.js';
+import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
+import { getMissionTypeColor, sortMissionsByDifficulty } from '../systems/missionPresentation.js';
 
 const COLORS = { gold: '#ffe27a', pale: '#d8e6ef', muted: '#91a4b5' };
 const DIFFICULTY_NAMES = { EASY: '1', NORMAL: '2', HARD: '3', EXPERT: '4', INSANE: '5' };
@@ -26,8 +28,7 @@ export default class MapSelectScene extends Phaser.Scene {
     this.missions = this.rpgManager.getAvailableMissions();
     this.selectedMission = null;
     this.missionLayout = getMissionGridLayout(this.scale.width, this.scale.height);
-    this.cameras.main.setBackgroundColor('#101923');
-    this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.54);
+    this.cameras.main.setBackgroundColor('rgba(0, 0, 0, 0)');
     this.add.image(this.scale.width / 2, this.scale.height / 2, 'ui_panel_9').setDisplaySize(this.scale.width, this.scale.height).setAlpha(0.16);
     this.add.text(this.scale.width / 2, 27, 'AVAILABLE MISSIONS', { fontSize: '27px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
     this.addButton(26, 20, 'Back to Hub', () => this.scene.start('MainHubScene'));
@@ -42,7 +43,7 @@ export default class MapSelectScene extends Phaser.Scene {
     this.add.text(28, 65, `TURN ${this.rpgManager.state.turnNumber + 1} - Choose from three offers for each faction`, { fontSize: '13px', color: COLORS.muted });
     this.missionCards = this.add.container(0, 0);
     this.add.rectangle(this.scale.width / 2, this.missionLayout.detailsTop + this.missionLayout.detailsHeight / 2,
-      this.scale.width - 48, this.missionLayout.detailsHeight, 0x0b1722, 0.96).setStrokeStyle(1, 0x315267);
+      this.scale.width - 48, this.missionLayout.detailsHeight, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.details = this.add.text(38, this.missionLayout.detailsTop + 7, 'Select a mission to inspect its rules and environment.', {
       fontSize: '13px', color: COLORS.pale, wordWrap: { width: this.scale.width - 76 }, lineSpacing: 2,
     });
@@ -62,15 +63,20 @@ export default class MapSelectScene extends Phaser.Scene {
 
   drawMissions() {
     this.missionCards.removeAll(true);
-    const offers = FACTIONS.flatMap(faction => this.missions.filter(mission => mission.faction === faction).slice(0, 3));
+    const offers = sortMissionsByDifficulty(
+      FACTIONS.flatMap(faction => this.missions.filter(mission => mission.faction === faction).slice(0, 3))
+    );
     offers.forEach((mission, index) => {
       const bounds = getMissionCardBounds(index, this.scale.width, this.scale.height);
       const environment = getFactionEnvironment(mission.faction);
       const selected = this.selectedMission?.id === mission.id;
+      const typeColor = getMissionTypeColor(mission.missionType);
       const card = this.add.rectangle(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2,
-        bounds.width, bounds.height, selected ? 0x213b4e : 0x142536, 0.98)
+        bounds.width, bounds.height, selected ? 0x213b4e : 0x142536, selected ? 0.68 : PANEL_ALPHA)
         .setStrokeStyle(2, selected ? 0xffe27a : 0x315267).setInteractive({ useHandCursor: true });
       this.missionCards.add(card);
+      const typeAccent = this.add.rectangle(bounds.x + 5, bounds.y + bounds.height / 2, 6, bounds.height - 8, typeColor, 1);
+      this.missionCards.add(typeAccent);
 
       const dynamic = mission.missionType === 'DYNAMIC_ENGAGEMENT';
       const restrictions = dynamic
@@ -80,9 +86,13 @@ export default class MapSelectScene extends Phaser.Scene {
       const textX = bounds.x + 12;
       this.missionCards.add(this.add.text(textX, bounds.y + 6,
         `${displayFactionName(mission.faction)} - Mission ${offerNumber}`, { fontSize: '12px', color: COLORS.gold, fontStyle: 'bold' }));
-      this.missionCards.add(this.add.text(textX, bounds.y + 25,
-        `${MISSION_TYPE_NAMES[mission.missionType] || mission.missionType} - Difficulty ${DIFFICULTY_NAMES[mission.difficulty] || mission.difficulty} - ${mission.wavesPerMap} wave(s)${dynamic ? ' per map' : ''}`,
-        { fontSize: '11px', color: COLORS.pale, wordWrap: { width: bounds.width - 24 } }));
+      const typeLabel = this.add.text(textX, bounds.y + 25,
+        MISSION_TYPE_NAMES[mission.missionType] || mission.missionType,
+        { fontSize: '11px', color: `#${typeColor.toString(16).padStart(6, '0')}`, fontStyle: 'bold' });
+      this.missionCards.add(typeLabel);
+      this.missionCards.add(this.add.text(textX + typeLabel.width + 10, bounds.y + 25,
+        `Difficulty ${DIFFICULTY_NAMES[mission.difficulty] || mission.difficulty} - ${mission.wavesPerMap} wave(s)${dynamic ? ' per map' : ''}`,
+        { fontSize: '11px', color: COLORS.pale, wordWrap: { width: bounds.width - typeLabel.width - 34 } }));
       this.missionCards.add(this.add.text(textX, bounds.y + 45,
         `Environment: ${mission.environmentLabel || environment.label}`,
         { fontSize: '10px', color: COLORS.muted, wordWrap: { width: bounds.width - 24 } }));
@@ -96,6 +106,8 @@ export default class MapSelectScene extends Phaser.Scene {
         this.drawMissions();
         this.updateDetails();
       });
+      card.on('pointerover', () => card.setStrokeStyle(3, selected ? 0xffe27a : typeColor));
+      card.on('pointerout', () => card.setStrokeStyle(2, selected ? 0xffe27a : 0x315267));
     });
     if (!offers.length) this.missionCards.add(this.add.text(40, this.missionLayout.top, 'No mission offers are available.', { fontSize: '15px', color: COLORS.muted }));
   }

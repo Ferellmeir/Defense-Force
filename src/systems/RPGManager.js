@@ -3,6 +3,7 @@ import { settleMissionState } from './missionSettlement.js';
 import { generateFactionStoreStock, generateStoreStock } from './storeStock.js';
 import { FACTIONS, displayFactionName, factionDataName, getFactionInfluence } from '../utils/factions.js';
 import { createMissionBoard } from './missionBoard.js';
+import { getUnitRankProgress, MAX_UNIT_STARS } from './unitRankProgress.js';
 
 const SAVE_KEY = 'scifi-tower-defense-rpg-v1';
 const VETERANCY_XP_BASE = 10;
@@ -76,6 +77,10 @@ export default class RPGManager {
           .filter(([unitId, savedUnit]) => this.units[unitId] && savedUnit)
           .map(([unitId, savedUnit]) => {
             const persistentData = { ...savedUnit };
+            const { stars, extraCopies } = getUnitRankProgress(savedUnit);
+            // `copies` is an older opaque field; only extraCopies has defined
+            // threshold semantics. Preserve the legacy field but do not use it
+            // to invent rank progress when loading an old save.
             delete persistentData.level;
             delete persistentData.veterancy;
             delete persistentData.xp;
@@ -88,9 +93,10 @@ export default class RPGManager {
             return [unitId, {
               ...persistentData,
               id: unitId,
-              stars: Math.max(0, Math.min(5, Math.floor(Number(savedUnit.stars) || 0))),
-              extraCopies: Math.max(0, Math.floor(Number(savedUnit.extraCopies) || 0)),
-              extraPassiveUnlocked: Boolean(savedUnit.extraPassiveUnlocked),
+              stars,
+              rank: stars,
+              extraCopies,
+              extraPassiveUnlocked: stars === 5,
             }];
           })
       );
@@ -100,7 +106,17 @@ export default class RPGManager {
         units,
         inventory: (parsed.inventory || []).filter(instance => !this.isPermanentlyAvailable(this.getItemDefinition(instance.itemId))),
         deploymentLineup: Array.isArray(parsed.deploymentLineup)
-          ? parsed.deploymentLineup.slice(0, 5).map(id => this.getUnitDefinition(id) && this.getOwnedUnitFrom(savedUnits, id) ? id : null)
+          ? parsed.deploymentLineup.slice(0, 5).map((entry, index) => {
+            const unitId = typeof entry === 'string' ? entry : entry?.unitId;
+            if (!this.getUnitDefinition(unitId) || !this.getOwnedUnitFrom(savedUnits, unitId)) return null;
+            const owned = savedUnits[unitId];
+            return {
+              deploymentId: entry?.deploymentId || `lineup-${index}`,
+              unitId,
+              equipped: clone(entry?.equipped || owned.equipped || { left: null, right: null, utility: null }),
+              augments: clone(entry?.augments || owned.augments || []),
+            };
+          })
           : [],
         credits: Number.isFinite(parsed.credits) ? parsed.credits : defaults.credits,
         influence: parsed.influence && typeof parsed.influence === 'object' ? parsed.influence : {},
@@ -179,7 +195,7 @@ export default class RPGManager {
       rewardMultiplier,
       units: this.units,
       equipment: this.equipment,
-      addUnitCopy: unitId => this.addUnitCopy(unitId),
+      addUnitCopy: (unitId, count = 1) => this.addUnitCopy(unitId, count),
       random,
     });
     if (!result) return null;
@@ -542,13 +558,25 @@ export default class RPGManager {
 
   getOwnedUnitFrom(units, unitId) { return Boolean(units?.[unitId]); }
 
-  setDeploymentLineup(unitIds) {
-    if (!Array.isArray(unitIds) || unitIds.length > 5) return false;
+  setDeploymentLineup(entries) {
+    if (!Array.isArray(entries) || entries.length > 5) return false;
     const lineup = Array.from({ length: 5 }, (_, index) => {
-      const id = unitIds[index] || null;
-      return id && this.getUnitDefinition(id) && this.getOwnedUnit(id) ? id : null;
+      const entry = entries[index];
+      if (!entry) return null;
+      const unitId = typeof entry === 'string' ? entry : entry.unitId;
+      if (!this.getUnitDefinition(unitId) || !this.getOwnedUnit(unitId)) return null;
+      const owned = this.getOwnedUnit(unitId);
+      return {
+        deploymentId: typeof entry === 'string' ? `lineup-${index}` : entry.deploymentId || `lineup-${index}`,
+        unitId,
+        equipped: clone(typeof entry === 'string' ? owned.equipped : entry.equipped || owned.equipped),
+        augments: clone(typeof entry === 'string' ? owned.augments || [] : entry.augments || owned.augments || []),
+      };
     });
-    if (unitIds.some(id => id && (!this.getUnitDefinition(id) || !this.getOwnedUnit(id)))) return false;
+    if (entries.some(entry => {
+      const id = typeof entry === 'string' ? entry : entry?.unitId;
+      return id && (!this.getUnitDefinition(id) || !this.getOwnedUnit(id));
+    })) return false;
     this.state.deploymentLineup = lineup;
     this.save();
     return true;
@@ -756,9 +784,12 @@ export default class RPGManager {
     });
   }
 
-  addUnitCopy(unitId) {
+  addUnitCopy(unitId, count = 1) {
     if (!this.getUnitDefinition(unitId)) return false;
+    const copiesToAdd = Number(count);
+    if (!Number.isSafeInteger(copiesToAdd) || copiesToAdd < 1) return false;
     let unit = this.getOwnedUnit(unitId);
+    let additionalCopies = copiesToAdd;
     if (!unit) {
       const freeWeapon = Object.values(this.equipment.items).find(item => item.rarity === 'MAKESHIFT'
         && this.isWeaponAllowed(unitId, item));
@@ -766,12 +797,16 @@ export default class RPGManager {
         id: unitId, stars: 0, extraCopies: 0, extraPassiveUnlocked: false,
         equipped: { left: freeWeapon?.id || null, right: freeWeapon?.id || null, utility: null }, augments: [],
       };
-    } else if (unit.stars < 5) {
-      unit.extraCopies = Math.max(0, Number(unit.extraCopies) || 0) + 1;
-      while (unit.stars < 5 && unit.extraCopies >= unit.stars + 1) {
-        unit.extraCopies -= unit.stars + 1;
+      additionalCopies -= 1;
+    }
+    ({ stars: unit.stars, extraCopies: unit.extraCopies } = getUnitRankProgress(unit));
+    if (unit.stars < MAX_UNIT_STARS && additionalCopies > 0) {
+      let availableCopies = unit.extraCopies + additionalCopies;
+      while (unit.stars < MAX_UNIT_STARS && availableCopies >= unit.stars + 1) {
+        availableCopies -= unit.stars + 1;
         unit.stars += 1;
       }
+      unit.extraCopies = unit.stars < MAX_UNIT_STARS ? availableCopies : 0;
     }
     unit.rank = unit.stars;
     unit.extraPassiveUnlocked = unit.stars === 5;
@@ -779,8 +814,8 @@ export default class RPGManager {
     return true;
   }
 
-  equip(unitId, itemId, slot = 'utility') {
-    const owned = this.getOwnedUnit(unitId);
+  equip(unitId, itemId, slot = 'utility', targetLoadout = this.getOwnedUnit(unitId)) {
+    const owned = targetLoadout;
     const item = this.getItemDefinition(itemId);
     if (!owned || !item || (!this.isPermanentlyAvailable(item) && !this.getItemInstance(itemId))) return false;
     let equipSlot = slot;
@@ -791,6 +826,12 @@ export default class RPGManager {
         if (right === itemId && !left) equipSlot = 'left';
         else if (!right) equipSlot = 'right';
         else if (!left) equipSlot = 'left';
+        else if (left === right && this.getItemDefinition(right)?.hands === 2) {
+          // A mirrored two-handed weapon is one occupied item, not a dual-wield
+          // loadout. Let the default right-hand target replace it via the normal
+          // two-handed cleanup below.
+          equipSlot = 'right';
+        }
         else return false;
       } else {
         // Preserve the existing two-handed behavior: an accepted two-handed
@@ -823,8 +864,8 @@ export default class RPGManager {
     return true;
   }
 
-  equipAugment(unitId, itemId) {
-    const owned = this.getOwnedUnit(unitId);
+  equipAugment(unitId, itemId, targetLoadout = this.getOwnedUnit(unitId)) {
+    const owned = targetLoadout;
     const augment = this.equipment.augments[itemId];
     if (!owned || !augment || augment.type !== 'augment'
       || !this.getItemInstance(itemId) || (owned.augments || []).length > 0) return false;
@@ -833,8 +874,8 @@ export default class RPGManager {
     return true;
   }
 
-  unequipAugment(unitId, itemId) {
-    const owned = this.getOwnedUnit(unitId);
+  unequipAugment(unitId, itemId, targetLoadout = this.getOwnedUnit(unitId)) {
+    const owned = targetLoadout;
     if (!owned?.augments?.includes(itemId)) return false;
     const augment = this.equipment.augments[itemId];
     const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EXOTIC', 'LEGENDARY'];
@@ -851,8 +892,8 @@ export default class RPGManager {
     return true;
   }
 
-  unequip(unitId, slot = 'utility') {
-    const owned = this.getOwnedUnit(unitId);
+  unequip(unitId, slot = 'utility', targetLoadout = this.getOwnedUnit(unitId)) {
+    const owned = targetLoadout;
     if (!owned || (slot !== 'utility' && slot !== 'left' && slot !== 'right')) return false;
     const equipped = { ...owned.equipped };
     if (slot === 'utility') equipped.utility = null;
@@ -886,7 +927,7 @@ export default class RPGManager {
     const owned = this.getOwnedUnit(unitId);
     if (!definition || !owned) return null;
 
-    const stars = Math.max(0, Math.min(5, Number(owned.stars ?? owned.rank) || 0));
+    const { stars } = getUnitRankProgress(owned);
     const starMultiplier = 1 + 0.06 * stars;
     const stats = { ...clone(definition.baseStats) };
     ['attackSpeedModifier', 'criticalChance', 'criticalModifier', 'rangedSkill', 'meleeSkill', 'reloadSpeed']
@@ -951,7 +992,9 @@ export default class RPGManager {
       .filter(augment => !augment.requiredDamageType || eligibleWeaponDefinitions.some(weapon => weapon.damageType === augment.requiredDamageType));
     const isWeaponConditional = augment => augment.requiredHands || augment.requiredAttackType || augment.requiredDamageType;
     const conditionalAugments = augments.filter(isWeaponConditional);
-    const effects = [definition.passive, ...augments.filter(augment => !isWeaponConditional(augment))];
+    const extraPassive = definition.extraPassive || definition.additionalPassive || null;
+    const effects = [definition.passive, stars === 5 ? extraPassive : null,
+      ...augments.filter(augment => !isWeaponConditional(augment))];
     stats.veterancyForceCostMultiplier = 1;
     stats.statusDuration = 1;
     stats.sellBonus = 0;
@@ -1027,6 +1070,7 @@ export default class RPGManager {
     stats.filtering = definition.filtering || 'linear';
     stats.unitId = unitId;
     stats.equipped = clone(progression.equipped || owned.equipped);
+    stats.augments = clone(progression.augments || owned.augments || []);
     stats.equipment = clone(progression.equipment || {
       weapons: ['left', 'right'].map(slot => {
         const itemId = owned.equipped[slot];
@@ -1043,6 +1087,7 @@ export default class RPGManager {
     stats.rank = stars;
     stats.stars = stars;
     stats.extraPassiveUnlocked = stars === 5;
+    stats.extraPassive = stars === 5 ? clone(extraPassive) : null;
     stats.experience = Number(progression.experience ?? progression.xp ?? 0) || 0;
     stats.xp = stats.experience;
     stats.ammo = clone(primary?.ammo || { requiresAmmo: false, consumesPerAttack: 0, unlimited: true });

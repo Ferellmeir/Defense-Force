@@ -6,6 +6,7 @@ import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
 import { FACTION_PAGE_BACKGROUNDS, useSceneBackground } from '../utils/screenBackgrounds.js';
+import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
 
 const IMPLEMENTED = new Set(Object.keys(FACTION_PAGE_BACKGROUNDS));
 
@@ -28,7 +29,6 @@ export default class FactionScene extends Phaser.Scene {
     }
     useSceneBackground(this, `assets/images/${FACTION_PAGE_BACKGROUNDS[this.faction]}`);
     this.rpg = new RPGManager(this);
-    this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x101923, 0.56);
     this.add.image(640, 360, 'ui_panel_9').setDisplaySize(1280, 720).setAlpha(0.14);
     this.add.text(26, 18, this.faction.toUpperCase(), { fontSize: '29px', color: '#ffe27a', fontStyle: 'bold' });
     this.addButton(1120, 20, 'Back to Hub', () => this.scene.start('MainHubScene'));
@@ -45,7 +45,7 @@ export default class FactionScene extends Phaser.Scene {
     this.add.text(610, 96, `Allegiance: ${allegiance || 'None'}`, { fontSize: '15px', color: allegiance === this.faction ? '#a6efbd' : '#c6d5df' });
     this.allegianceButton = this.addButton(900, 91, '', () => this.confirmAllegiance());
     this.refreshAllegianceButton();
-    this.add.rectangle(640, 365, 1228, 490, 0x0b1722, 0.93).setStrokeStyle(1, 0x315267);
+    this.add.rectangle(640, 365, 1228, 490, 0x0b1722, PANEL_ALPHA).setStrokeStyle(1, 0x315267);
     this.add.text(28, 132, 'FACTION STORE', { fontSize: '19px', color: '#ffe27a', fontStyle: 'bold' });
     this.add.text(315, 137, 'Faction stock · purchases use influence', { fontSize: '13px', color: '#91a4b5' });
     this.add.text(565, 137, 'No faction augments are currently configured.', { fontSize: '11px', color: '#91a4b5' });
@@ -108,7 +108,7 @@ export default class FactionScene extends Phaser.Scene {
     }
     items.forEach((item, index) => {
       const col = index % 4, row = Math.floor(index / 4), x = col * 305, y = row * 176;
-      const card = this.add.rectangle(x + 143, y + 74, 286, 160, 0x192b3a, 0.98).setStrokeStyle(1, 0x34576b);
+      const card = this.add.rectangle(x + 143, y + 74, 286, 160, 0x192b3a, PANEL_ALPHA).setStrokeStyle(1, 0x34576b);
       this.storeCards.add(card);
       this.storeCards.add(this.add.image(x + 35, y + 48, rarityFrame(item.rarity)).setDisplaySize(58, 70));
       const iconKey = item.kind === 'unit' ? `faction_unit_${item.id}` : this.iconFor(item);

@@ -23,13 +23,14 @@ import EnemyManager from '../systems/EnemyManager.js';
 import ProjectileManager from '../systems/ProjectileManager.js';
 import RPGManager from '../systems/RPGManager.js';
 import { advanceDynamicMissionMap, clearMissionLocalState, getNextDynamicMapIndex, transitionToMap } from '../systems/missionFlow.js';
-import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowFlipX } from '../utils/pathTiles.js';
+import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowRotation } from '../utils/pathTiles.js';
 import { getBuildingDisplaySize } from '../utils/buildingFootprint.js';
 import { getFactionEnvironment } from '../systems/missionEnvironments.js';
 import { useSceneBackground } from '../utils/screenBackgrounds.js';
 import { createBattlefieldProjection } from '../utils/battlefieldProjection.js';
 import { getTileInformation } from '../systems/tileInformation.js';
 import { placeSpecialTileOnMap } from '../systems/specialTilePlacement.js';
+import { getPlacementTileAtPointer, isBattlefieldPointerWithinViewport } from '../systems/placementInput.js';
 import { createTileHoverPopupController } from '../systems/tileHoverPopup.js';
 import {
   BATTLEFIELD_DRAG_THRESHOLD,
@@ -495,19 +496,19 @@ export default class GameScene extends Phaser.Scene {
 
     // Set up path for enemies to follow (use first path for now)
     const mainPath = mapData.paths[0];
-    // Draw a tile for every route cell. Downward routes use the closest
-    // available upward arrow, with horizontal flipping only.
+    // Draw one arrow for every route cell, oriented along the final traversal
+    // of that cell (important for routes that cross themselves).
     for (const routeTile of getDirectedPathTiles(mainPath)) {
       const center = projection.worldToLayer(
         (routeTile.x + 0.5) * tileSize,
         (routeTile.y + 0.5) * tileSize
       );
-      const directionFlipX = getProjectedPathArrowFlipX(
+      const directionRotation = getProjectedPathArrowRotation(
         routeTile.nextX - routeTile.x,
         routeTile.nextY - routeTile.y
       );
       const pathTile = this.add.image(center.x, center.y, isLaisungMission ? 'laisung_path_tile' : 'enemy_path_tile');
-      pathTile.setDisplaySize(renderedTileSize, renderedTileSize).setFlipX(directionFlipX);
+      pathTile.setDisplaySize(renderedTileSize, renderedTileSize).setRotation(directionRotation);
       this.mapLayer.add(pathTile);
     }
     this.pathManager.setPath(
@@ -621,8 +622,7 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
     const bounds = this.battlefieldCameraBounds?.viewport;
-    if (pointer.isDown || this.isPaused || this.gameEnded || !bounds || pointer.x < bounds.x || pointer.x > bounds.x + bounds.width
-      || pointer.y < bounds.y || pointer.y > bounds.y + bounds.height) {
+    if (pointer.isDown || this.isPaused || this.gameEnded || !isBattlefieldPointerWithinViewport(pointer, bounds)) {
       this.tileInfoController?.leave();
       return;
     }
@@ -671,14 +671,9 @@ export default class GameScene extends Phaser.Scene {
     const bounds = this.battlefieldCameraBounds;
     if (this.tileClearConfirmation?.isOpen()) return;
     if (this.gameEnded || !bounds || !pointer.leftButtonDown()) return;
-    if (pointer.x < bounds.viewport.x || pointer.x > bounds.viewport.x + bounds.viewport.width
-      || pointer.y < bounds.viewport.y || pointer.y > bounds.viewport.y + bounds.viewport.height) return;
+    if (!isBattlefieldPointerWithinViewport(pointer, bounds.viewport)) return;
 
-    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const cell = this.battlefieldProjection.screenToTile(worldPoint.x, worldPoint.y);
-    const tile = cell && this.placementTiles.find(item =>
-      item.gridPosition.x === cell.x && item.gridPosition.y === cell.y
-    );
+    const tile = getPlacementTileAtPointer(pointer, this.cameras.main, this.battlefieldProjection, this.placementTiles);
     this.battlefieldPointer = {
       id: pointer.id,
       x: pointer.x,
@@ -829,34 +824,12 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Prevent placement in UI bar regions
-    const canvasHeight = this.sys.game.scale.height;
-    const tileHeight = tile.displayHeight || 64;
-    const projectedTilePosition = this.battlefieldProjection.worldToScreen(
-      (gridPosition.x + 0.5) * this.mapManager.getCurrentMap().tileSize,
-      (gridPosition.y + 0.5) * this.mapManager.getCurrentMap().tileSize
-    );
-    const tileScreenPosition = this.cameras.main.matrix.transformPoint(
-      projectedTilePosition.x,
-      projectedTilePosition.y
-    );
-    if (tileScreenPosition.y < TOP_BAR_HEIGHT || tileScreenPosition.y > (canvasHeight - BOTTOM_BAR_HEIGHT - tileHeight * this.cameras.main.zoom * 0.25)) {
-      // Use default message styling (now in UIScene.js)
-      this.events.emit(
-        'showMessage',
-        "You can't place \na tower here",
-        1800
-      );
-      return;
-    }
     if (tile.hasTower) return;
 
     const selectedDeployment = this.registry.get('selectedUnit');
     const selectedEntry = (this.registry.get('missionRoster') || []).find(entry => typeof entry === 'string' ? entry === selectedDeployment : entry.deploymentId === selectedDeployment);
     const selectedUnit = typeof selectedEntry === 'string' ? selectedEntry : selectedEntry?.unitId;
-    if (!this.towerManager.deployUnit(selectedUnit, tile)) {
-      this.events.emit('showMessage', 'Not enough Force!', 1800);
-    }
+    this.towerManager.deployUnit(selectedUnit, tile);
   }
 
   openTileClearConfirmation(tile, map) {

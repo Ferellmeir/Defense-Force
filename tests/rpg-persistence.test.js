@@ -31,16 +31,38 @@ test('save loading restores known ownership and loadouts without mission-local p
   assert.deepEqual(manager.state.units, {
     KNOWN: {
       id: 'KNOWN', rank: 3, copies: 2,
-      stars: 0, extraCopies: 0, extraPassiveUnlocked: false,
+      stars: 3, extraCopies: 0, extraPassiveUnlocked: false,
       equipped: { left: 'weapon', right: null, utility: null },
       augments: [],
     },
   });
-  assert.equal(manager.state.units.KNOWN.stars, 0);
+  assert.equal(manager.state.units.KNOWN.stars, 3);
   assert.equal(manager.state.units.KNOWN.extraCopies, 0);
   assert.equal(manager.state.credits, 123);
   assert.equal(manager.state.firstUnitDiscountAvailable, false);
   assert.deepEqual(manager.state.inventory, saved.inventory);
+});
+
+test('save loading restores separate lineup loadouts for copies of the same unit type', () => {
+  const saved = {
+    units: { KNOWN: { id: 'KNOWN', stars: 1, equipped: { left: 'default', right: null, utility: null }, augments: [] } },
+    deploymentLineup: [
+      { deploymentId: 'first', unitId: 'KNOWN', equipped: { left: 'weapon_a', right: null, utility: null }, augments: [] },
+      { deploymentId: 'second', unitId: 'KNOWN', equipped: { left: 'weapon_b', right: 'weapon_b', utility: 'gear' }, augments: ['optic'] },
+    ],
+    inventory: [],
+  };
+  globalThis.window = {
+    GAME_SETTINGS: {
+      UNITS: { KNOWN: { id: 'KNOWN', cost: 9 } },
+      EQUIPMENT: { items: {}, augments: {} },
+    },
+    localStorage: { getItem: () => JSON.stringify(saved), setItem() {} },
+  };
+
+  const reopened = new RPGManager({});
+  assert.deepEqual(reopened.state.deploymentLineup.slice(0, 2), saved.deploymentLineup);
+  assert.notEqual(reopened.state.deploymentLineup[0].equipped, reopened.state.deploymentLineup[1].equipped);
 });
 
 test('New Game deletes persistent progress and writes the normal fresh starting state', () => {

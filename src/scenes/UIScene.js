@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { fmt } from '../utils/formatNumber.js';
-import { getAvailableVeterancyPathOptions, getVeterancyPathButtonY } from '../systems/veterancyPathChoices.js';
 import UIButton from '../helpers/UIButton.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
 import { getPriceColor, setButtonAffordability } from '../helpers/UIHelpers.js';
+import { selectUnitForPlacement } from '../systems/unitPlacementMode.js';
 import { CLEAR_TILE_FORCE_COST } from '../systems/tileClearing.js';
 import { preloadUiAssets } from '../helpers/uiAssets.js';
 import { displayFactionName } from '../utils/factions.js';
+import { getActiveUnitCombatEffects, getUnitCardCombatProfiles, getUnitCardEquipment, getUnitCardUpgradeColumns } from '../systems/unitCardData.js';
 
 // General dialog style config for confirmation dialogs
 const DIALOG_STYLE = {
@@ -97,16 +98,18 @@ export default class UIScene extends Phaser.Scene {
     if (this.towerInfoPanel) {
       this.towerInfoPanel.destroy(true);
     }
+    this.combatCardTimer?.remove();
+    this.combatCardTimer = null;
     this.stopAmmoDisplayTimer();
 
     // Store the current tower for live updates
     this.currentTowerForUpgradePanel = tower;
 
     // Panel background
-    const panelWidth = 500;
-    const panelHeight = 600;
-    const panelX = this.scale.width - panelWidth - 30;
-    const panelY = 100;
+    const panelWidth = Math.min(820, this.scale.width - 40);
+    const panelHeight = Math.min(650, this.scale.height - 40);
+    const panelX = Math.max(20, this.scale.width - panelWidth - 20);
+    const panelY = Math.max(20, Math.min(50, this.scale.height - panelHeight - 20));
     const panelBg = this.add.rectangle(
       0,
       0,
@@ -131,11 +134,13 @@ export default class UIScene extends Phaser.Scene {
     // Tower name
     const nameText = this.add.text(
       20,
-      15,
+      12,
       `Unit: ${tower.towerData.name || tower.type}`,
       {
         fontSize: '20px',
         fill: '#ffffff',
+        fixedWidth: panelWidth - 90,
+        wordWrap: { width: panelWidth - 90 },
       }
     );
     this.towerInfoPanel.add(nameText);
@@ -143,7 +148,7 @@ export default class UIScene extends Phaser.Scene {
     // Tower level
     const levelText = this.add.text(
       20,
-      50,
+      43,
       `Level: ${fmt(tower.towerData.level || tower.level)}   Rank: ${fmt(tower.towerData.rank || 1)}`,
       {
         fontSize: '18px',
@@ -152,20 +157,69 @@ export default class UIScene extends Phaser.Scene {
     );
     this.towerInfoPanel.add(levelText);
 
-    // Tower stats
-    const statsText = this.add.text(
-      20,
-      80,
-      `Damage: ${fmt(tower.towerData.damage)}\nRange: ${fmt(
-        tower.towerData.range
-      )}\nAttack: ${fmt(tower.towerData.attackSpeed)}ms\nType: ${tower.towerData.damageType}\nTarget: ${tower.targetingMode}`,
-      { fontSize: '16px', fill: '#ffffff' }
-    );
-    this.towerInfoPanel.add(statsText);
+    const combatHeading = this.add.text(20, 78, 'LIVE COMBAT PROFILE', { fontSize: '13px', fill: '#7de8ff', fontStyle: 'bold' });
+    const statsText = this.add.text(20, 99, '', {
+      fontSize: '12px', fill: '#ffffff', lineSpacing: 2,
+      fixedWidth: Math.floor(panelWidth * 0.52) - 40,
+      wordWrap: { width: Math.floor(panelWidth * 0.52) - 40 },
+    });
+    this.towerInfoPanel.add([combatHeading, statsText]);
 
-    const ammoText = this.add.text(20, 155, '', { fontSize: '15px', fill: '#ffd27d' });
+    const equipmentHeading = this.add.text(Math.floor(panelWidth * 0.54), 78, 'EQUIPMENT', { fontSize: '13px', fill: '#7de8ff', fontStyle: 'bold' });
+    const equipmentText = this.add.text(Math.floor(panelWidth * 0.54), 99, '', {
+      fontSize: '12px', fill: '#d8e6ef', lineSpacing: 3,
+      fixedWidth: Math.floor(panelWidth * 0.44) - 24,
+      wordWrap: { width: Math.floor(panelWidth * 0.44) - 24 },
+    });
+    this.towerInfoPanel.add([equipmentHeading, equipmentText]);
+
+    const liveEffectsText = this.add.text(20, 218, '', { fontSize: '11px', fill: '#a6efb1', wordWrap: { width: panelWidth - 40 } });
+    const ammoText = this.add.text(20, 238, '', { fontSize: '11px', fill: '#ffd27d', wordWrap: { width: panelWidth - 40 } });
+    this.towerInfoPanel.add(liveEffectsText);
     this.towerInfoPanel.add(ammoText);
+    const gameScene = this.scene.get('GameScene');
+    const manager = gameScene.rpgManager;
+    const refreshCombatCard = () => {
+      if (!this.towerInfoPanel || this.currentTowerForUpgradePanel !== tower || !tower.towerData) return;
+      const now = Number(gameScene.gameTime || 0);
+      const profileText = getUnitCardCombatProfiles(tower, now, gameScene.towerManager?.getAll?.().length || 1).map(profile => {
+        const ammo = profile.unlimitedAmmo ? 'unlimited ammo'
+          : Number.isFinite(profile.ammoRemaining) ? `${fmt(profile.ammoRemaining)}/${fmt(profile.ammoCapacity)} ammo` : null;
+        const values = [
+          `${fmt(profile.damage)} profile damage/hit`,
+          `${fmt(profile.interval / 1000)}s interval`,
+          `${fmt(profile.range)} range`,
+          `${fmt(profile.criticalChance * 100)}% crit · ×${fmt(profile.criticalModifier)}`,
+          Number(profile.armorPenetration) ? `${fmt(profile.armorPenetration * 100)}% armor penetration` : null,
+          profile.reload !== null ? `${fmt(profile.reload)}ms reload` : null,
+          ammo,
+          Number(profile.aoeRadius) > 0 ? `${fmt(profile.aoeRadius)} AoE` : null,
+          profile.statusEffects.length ? `applies ${profile.statusEffects.join(', ')}` : null,
+        ].filter(Boolean).join(' · ');
+        return `${profile.name} (${profile.damageType} ${profile.attackType})\n${values}`;
+      });
+      statsText.setText(profileText.join('\n\n') || 'No active weapon or inherent attacks.');
+
+      const effects = getActiveUnitCombatEffects(tower, now);
+      liveEffectsText.setText(effects.length ? `Active effects: ${effects.map(effect => `${effect.label}${effect.remaining !== undefined ? ` (${fmt(effect.remaining)}s left)` : ''}`).join(' · ')}` : '');
+
+      const getEquipmentLine = (slot, item) => {
+        if (!item) return `${slot}: Empty`;
+        const details = [
+          item.type === 'weapon' ? `${item.hands || 1}-hand ${item.attackType || 'weapon'}` : item.type,
+          item.damage !== undefined ? `${fmt(item.damage)} damage` : null,
+          item.range !== undefined ? `${fmt(item.range)} range` : null,
+          item.attacksPerSecond > 0 ? `${fmt(item.attacksPerSecond)} attacks/s` : null,
+        ].filter(Boolean).join(' · ');
+        return `${slot}: ${item.name}${details ? ` (${details})` : ''}`;
+      };
+      equipmentText.setText(getUnitCardEquipment(tower, manager)
+        .map(row => getEquipmentLine(row.slot, row.item)).join('\n'));
+    };
+    refreshCombatCard();
+    this.combatCardTimer = this.time.addEvent({ delay: 250, loop: true, callback: refreshCombatCard });
     const updateAmmoText = () => {
+      refreshCombatCard();
       const gameScene = this.scene.get('GameScene');
       const attackState = tower.weaponAttackStates?.[0];
       const hasEquippedWeapon = attackState?.profile?.weaponId
@@ -199,17 +253,17 @@ export default class UIScene extends Phaser.Scene {
     updateAmmoText();
     this.reloadDisplayTimer = this.time.addEvent({ delay: 100, loop: true, callback: updateAmmoText });
 
-    const targetingButton = this.add.text(20, 190, 'Cycle Targeting', {
-      fontSize: '15px', fill: '#7de8ff', backgroundColor: '#163d52', padding: 6,
+    const targetingButton = this.add.text(20, 277, 'Cycle Targeting', {
+      fontSize: '14px', fill: '#7de8ff', backgroundColor: '#163d52', padding: 6,
     }).setInteractive();
     targetingButton.on('pointerdown', () => {
       tower.cycleTargetingMode();
-      statsText.setText(`Damage: ${fmt(tower.towerData.damage)}\nRange: ${fmt(tower.towerData.range)}\nAttack: ${fmt(tower.towerData.attackSpeed)}ms\nType: ${tower.towerData.damageType}\nTarget: ${tower.targetingMode}`);
+      refreshCombatCard();
     });
     this.towerInfoPanel.add(targetingButton);
 
-    const sellButton = this.add.text(205, 190, '', {
-      fontSize: '15px', fill: '#ffe27a', backgroundColor: '#5a3426', padding: 6,
+    const sellButton = this.add.text(205, 277, '', {
+      fontSize: '14px', fill: '#ffe27a', backgroundColor: '#5a3426', padding: 6,
     }).setInteractive({ useHandCursor: true });
     const updateSellButton = () => sellButton.setText(`Sell (+${fmt(tower.getSellForceRefund())} Force)`);
     updateSellButton();
@@ -219,138 +273,50 @@ export default class UIScene extends Phaser.Scene {
     });
     this.towerInfoPanel.add(sellButton);
 
-    const gameScene = this.scene.get('GameScene');
-    const progressionText = this.add.text(20, 245, '', {
-      fontSize: '12px',
-      fill: '#d8e6ef',
-      lineSpacing: -2,
-      wordWrap: { width: panelWidth - 40 },
-    });
-    this.towerInfoPanel.add(progressionText);
-
-    const pathTiers = gameScene.rpgManager.getPathChoiceState(tower.characterId, tower);
-    const lines = [
-      `Veterancy: ${fmt(tower.veterancy)}`,
-      `XP: ${fmt(tower.experience)} / ${fmt(tower.getVeterancyXpRequirement())}`,
-      `Force: ${fmt(gameScene.economyManager.getForce())} | Next cost: ${fmt(tower.getVeterancyForceCost(), 'floor')}`,
-    ];
-    pathTiers.forEach(tier => {
-      lines.push(`Tier ${fmt(tier.tier)}: ${tier.unlocked ? `${fmt(tier.completed)}/${fmt(tier.limit)} paths complete` : 'Locked'}`);
-      tier.paths.forEach(path => {
+    const pathTiers = getUnitCardUpgradeColumns(gameScene.rpgManager.getPathChoiceState(tower.characterId, tower));
+    this.towerInfoPanel.add(this.add.text(20, 311,
+      `Veterancy ${fmt(tower.veterancy)} · XP ${fmt(tower.experience)}/${fmt(tower.getVeterancyXpRequirement())} · Force ${fmt(gameScene.economyManager.getForce())} · Next upgrade ${fmt(tower.getVeterancyForceCost(), 'floor')} Force`,
+      { fontSize: '12px', fill: '#d8e6ef', wordWrap: { width: panelWidth - 40 } }));
+    const columnsX = 20;
+    const columnGap = 8;
+    const columnWidth = (panelWidth - 40 - columnGap * 2) / 3;
+    const columnY = 339;
+    const columnHeight = panelHeight - columnY - 12;
+    pathTiers.forEach((tier, index) => {
+      const x = columnsX + index * (columnWidth + columnGap);
+      const column = this.add.rectangle(x, columnY, columnWidth, columnHeight, tier.unlocked ? 0x142b3b : 0x202832, 0.98)
+        .setOrigin(0).setStrokeStyle(1, tier.unlocked ? 0x4c829b : 0x59636b);
+      this.towerInfoPanel.add(column);
+      this.towerInfoPanel.add(this.add.text(x + 8, columnY + 7,
+        `TIER ${fmt(tier.tier)} · ${tier.unlocked ? `${fmt(tier.completed)}/${fmt(tier.limit)} complete` : 'LOCKED'}`,
+        { fontSize: '12px', fill: tier.unlocked ? '#7de8ff' : '#91a4b5', fontStyle: 'bold', fixedWidth: columnWidth - 16 }));
+      const paths = tier.paths || [];
+      const rowHeight = Math.min(91, (columnHeight - 38) / Math.max(paths.length, 1));
+      paths.forEach((path, pathIndex) => {
         const status = path.abandoned ? 'ABANDONED' : path.selected ? 'COMMITTED' : path.available ? 'AVAILABLE' : 'LOCKED';
-        lines.push(`  ${path.name}: ${fmt(path.level)}/3 ${status}`);
-      });
-    });
-    progressionText.setText(lines.join('\n'));
-
-    // Leave the full progression summary unobscured, then render every
-    // available path choice in its own row. The previous y=430 start
-    // overlapped the multi-tier path summary and hid the last choice.
-    getAvailableVeterancyPathOptions(pathTiers).forEach(({ path }, index) => {
-      const pathButtonY = getVeterancyPathButtonY(index);
-      const pathButton = this.add.text(20, pathButtonY, `Choose ${path.name} (Force ${fmt(tower.getVeterancyForceCost(), 'floor')})`, {
-        fontSize: '14px',
-        fill: '#ffffff',
-        backgroundColor: '#245b66',
-        padding: 5,
-      }).setInteractive({ useHandCursor: true });
-      pathButton.on('pointerdown', () => {
-        const forceCost = tower.getVeterancyForceCost();
-        if (!tower.spendVeterancy(path.id)) {
-          this.showMessage(`Need ${fmt(forceCost, 'floor')} Force and ${fmt(tower.getVeterancyXpRequirement())} XP.`, 1800);
-          return;
-        }
-        this.showTowerInfo(tower);
-      });
-      this.towerInfoPanel.add(pathButton);
-    });
-
-    // Upgrade info
-    const canUpgrade = false;
-    let upgradeCost = 0;
-    if (canUpgrade) {
-      // Calculate upgrade cost using tower's method or fallback
-      if (typeof tower.calculateUpgradeCost === 'function') {
-        upgradeCost = tower.calculateUpgradeCost();
-      } else {
-        upgradeCost = Math.floor(tower.towerData.cost * 0.5);
-      }
-    }
-
-    const canAffordUpgrade = this.money >= upgradeCost;
-    const upgradeText = this.add.text(
-      20,
-      140,
-      canUpgrade ? `Upgrade Cost: ${fmt(upgradeCost, 'floor')}g` : 'Progression: Open Roster',
-      { fontSize: '16px', fill: getPriceColor(canUpgrade && canAffordUpgrade) }
-    );
-    this.towerInfoPanel.add(upgradeText);
-
-    // Upgrade button
-    if (canUpgrade) {
-      const upgradeBtn = this.add.rectangle(
-        panelWidth - 120,
-        panelHeight - 50,
-        100,
-        40,
-        0x00aa00
-      );
-      upgradeBtn.setOrigin(0, 0);
-      setButtonAffordability(upgradeBtn, canAffordUpgrade, 0x00aa00, 0x888888);
-
-      const btnText = this.add.text(
-        panelWidth - 70,
-        panelHeight - 30,
-        'Upgrade',
-        {
-          fontSize: '18px',
-          fill: '#ffffff',
-        }
-      );
-      btnText.setOrigin(0.5);
-      this.towerInfoPanel.add(upgradeBtn);
-      this.towerInfoPanel.add(btnText);
-
-      // --- Always attach handler, check state inside ---
-      upgradeBtn.on('pointerdown', () => {
-        // Defensive: check if still interactive
-        if (!upgradeBtn.input || !upgradeBtn.input.enabled) return;
-
-        // LOG: Recalculate live state at click time
-        const currentMoney = this.scene.get('GameScene').economyManager.getMoney();
-        let canUpgrade = typeof tower.upgrade === 'function' && (!tower.maxLevel || tower.level < tower.maxLevel);
-        let upgradeCost = 0;
-        if (canUpgrade) {
-          if (typeof tower.calculateUpgradeCost === 'function') {
-            upgradeCost = tower.calculateUpgradeCost();
-          } else {
-            upgradeCost = Math.floor(tower.towerData.cost * 0.5);
-          }
-        }
-        const canAffordUpgrade = currentMoney >= upgradeCost;
-        console.log('[UpgradeBtn] Clicked. Gold:', currentMoney, 'UpgradeCost:', upgradeCost, 'canUpgrade:', canUpgrade, 'canAffordUpgrade:', canAffordUpgrade);
-
-        // Check if can upgrade and can afford
-        if (canUpgrade && canAffordUpgrade) {
-          const audioManager = this.scene.get('GameScene').audioManager;
-          if (audioManager) audioManager.playSound('upgrade');
-          tower.upgrade();
-          this.scene.get('GameScene').events.emit('updateUI', {
-            money: this.scene.get('GameScene').economyManager.getMoney(),
+        const y = columnY + 33 + pathIndex * rowHeight;
+        const upgrades = (path.upgrades || []).map(upgrade => upgrade.name).filter(Boolean);
+        const body = `${path.name}\nRank ${fmt(path.level)}/3 · ${status}${upgrades.length ? `\n${upgrades.slice(0, 3).join(' · ')}` : ''}${path.available ? `\nChoose · ${fmt(tower.getVeterancyForceCost(), 'floor')} Force` : ''}`;
+        const choice = this.add.text(x + 7, y, body, {
+          fontSize: '11px', fill: path.selected ? '#ffe27a' : path.available ? '#ffffff' : '#91a4b5',
+          backgroundColor: path.selected ? '#493f20' : path.available ? '#245b66' : '#18232c',
+          padding: { x: 5, y: 4 }, fixedWidth: columnWidth - 14, fixedHeight: rowHeight - 3,
+          wordWrap: { width: columnWidth - 24 }, lineSpacing: 1,
+        });
+        if (path.available) {
+          choice.setInteractive({ useHandCursor: true });
+          choice.on('pointerdown', () => {
+            const forceCost = tower.getVeterancyForceCost();
+            if (!tower.spendVeterancy(path.id)) {
+              this.showMessage(`Need ${fmt(forceCost, 'floor')} Force and ${fmt(tower.getVeterancyXpRequirement())} XP.`, 1800);
+              return;
+            }
+            this.showTowerInfo(tower);
           });
-          this.hideTowerInfo();
-        } else if (!canAffordUpgrade) {
-          this.showMessage('Not enough gold to upgrade!', 1800);
-        } else {
-          this.showMessage('Cannot upgrade: \ninsufficient funds\nor max level reached.', 3000);
         }
+        this.towerInfoPanel.add(choice);
       });
-      console.log('[UpgradeBtn] Handler attached to upgradeBtn');
-      // Optionally store references if you want to update on gold change
-      this.upgradeBtn = upgradeBtn;
-      this.upgradeText = upgradeText;
-      this.upgradeCost = upgradeCost;
-    }
+    });
 
     // Close button
     const closeBtn = this.add.rectangle(panelWidth - 40, 10, 30, 30, 0x444444);
@@ -397,6 +363,8 @@ export default class UIScene extends Phaser.Scene {
       this.upgradeBtn = null;
     }
     this.currentTowerForUpgradePanel = null;
+    this.combatCardTimer?.remove();
+    this.combatCardTimer = null;
     this.stopAmmoDisplayTimer();
   }
 
@@ -1163,6 +1131,7 @@ export default class UIScene extends Phaser.Scene {
   selectUnit(type) {
     if (!this.towerButtons.some(towerButton => towerButton.deploymentId === type)) return false;
     this.selectedUnit = type;
+    selectUnitForPlacement(type, this.registry, this.scene.get('GameScene'));
 
     // Update button appearances
     for (const towerButton of this.towerButtons) {
@@ -1173,7 +1142,6 @@ export default class UIScene extends Phaser.Scene {
       }
     }
 
-    this.registry.set('selectedUnit', type);
     return true;
   }
 

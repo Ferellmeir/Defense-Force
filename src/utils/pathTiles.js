@@ -21,7 +21,10 @@ export function getPathTileKeys(paths = []) {
 
 /** Return each traversed tile in order, paired with the next tile on the path. */
 export function getDirectedPathTiles(path = []) {
-  const tiles = [];
+  // A path may cross itself. Keep one visual tile per map cell, but overwrite
+  // its direction on every visit so the last crossing is authoritative.
+  const finalDirectionByTile = new Map();
+  let lastTraversedTile = null;
   for (let index = 0; index < path.length - 1; index += 1) {
     const start = path[index];
     const end = path[index + 1];
@@ -31,23 +34,32 @@ export function getDirectedPathTiles(path = []) {
       const y = Math.round(start.y + ((end.y - start.y) * step) / steps);
       const nextX = Math.round(start.x + ((end.x - start.x) * (step + 1)) / steps);
       const nextY = Math.round(start.y + ((end.y - start.y) * (step + 1)) / steps);
-      tiles.push({ x, y, nextX, nextY });
+      const tile = { x, y, nextX, nextY };
+      finalDirectionByTile.delete(`${x},${y}`);
+      finalDirectionByTile.set(`${x},${y}`, tile);
+      lastTraversedTile = tile;
     }
   }
   const final = path[path.length - 1];
-  const previous = tiles[tiles.length - 1];
-  if (final && previous) {
-    const dx = final.x - previous.x;
-    const dy = final.y - previous.y;
-    tiles.push({ x: final.x, y: final.y, nextX: final.x + dx, nextY: final.y + dy });
+  if (final && lastTraversedTile) {
+    const dx = final.x - lastTraversedTile.x;
+    const dy = final.y - lastTraversedTile.y;
+    // Enemies stop at the final waypoint. Its arrow follows the direction
+    // they traveled into the exit tile; no outgoing segment is invented.
+    finalDirectionByTile.delete(`${final.x},${final.y}`);
+    finalDirectionByTile.set(`${final.x},${final.y}`, {
+      x: final.x,
+      y: final.y,
+      nextX: final.x + dx,
+      nextY: final.y + dy,
+    });
   }
-  return tiles;
+  return [...finalDirectionByTile.values()];
 }
 
-/** Choose the closer of the two available upward arrows using a horizontal flip. */
-export function getProjectedPathArrowFlipX(dx, dy) {
-  const projectedX = dx - dy;
-  // The supplied art points up-right; its horizontal flip points up-left.
-  // For downward routes either arrow is a temporary closest-image fallback.
-  return projectedX < 0;
+/** Rotate the up-right arrow art to match the route in the map's oblique grid. */
+export function getProjectedPathArrowRotation(dx, dy) {
+  const projectedAngle = Math.atan2(dx + dy, dx - dy);
+  // The arrow in both path-tile assets points up-right (-PI / 4).
+  return projectedAngle + Math.PI / 4;
 }
