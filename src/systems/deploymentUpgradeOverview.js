@@ -1,3 +1,5 @@
+import { formatSignedPercent } from '../utils/statFormatting.js';
+
 const STAT_LABELS = {
   damage: 'Damage', range: 'Range', attackSpeedModifier: 'Attack speed', criticalChance: 'Critical chance',
   criticalModifier: 'Critical damage', reloadSpeed: 'Reload speed', armorPenetration: 'Armor penetration',
@@ -14,8 +16,8 @@ function effectLabel(effect) {
     const stat = STAT_LABELS[effect.stat] || effect.stat;
     const value = Number(effect.value);
     if (!Number.isFinite(value)) return stat;
-    const amount = effect.mode === 'percent' ? `${Math.round(value * 100)}%` : effect.mode === 'multiplier' ? `×${value}` : `${value}`;
-    return `${stat} ${value >= 0 ? '+' : ''}${amount}`;
+    const amount = effect.mode === 'percent' ? formatSignedPercent(value) : effect.mode === 'multiplier' ? `×${value}` : `${value}`;
+    return `${stat} ${effect.mode === 'percent' ? amount : `${value >= 0 ? '+' : ''}${amount}`}`;
   }
   if (effect.property) return effect.property;
   return '';
@@ -47,3 +49,4 @@ export function getDeploymentUpgradeOverview(rpgManager, unitId, progression = {
     })),
   }));
 }
+

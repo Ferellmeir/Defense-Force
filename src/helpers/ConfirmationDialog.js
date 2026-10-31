@@ -52,7 +52,7 @@ export default class ConfirmationDialog {
       borderThickness: typeof config.borderThickness === 'number' ? config.borderThickness : 2,
       borderRadius: typeof config.borderRadius === 'number' ? config.borderRadius : 0,
       padding: typeof config.padding === 'number' ? config.padding : 24,
-      fontFamily: config.fontFamily || 'Arial',
+      fontFamily: config.fontFamily || '"Megabot Five", sans-serif',
       fontSize: config.fontSize || 24,
       fontColor: config.fontColor || '#ffffff',
       buttonStyle: {
@@ -61,7 +61,7 @@ export default class ConfirmationDialog {
         borderColor: config.buttonStyle?.borderColor || 0xffffff,
         borderThickness: typeof config.buttonStyle?.borderThickness === 'number' ? config.buttonStyle.borderThickness : 2,
         borderRadius: typeof config.buttonStyle?.borderRadius === 'number' ? config.buttonStyle.borderRadius : 6,
-        fontFamily: config.buttonStyle?.fontFamily || 'Arial',
+        fontFamily: config.buttonStyle?.fontFamily || '"Megabot Five", sans-serif',
         fontSize: config.buttonStyle?.fontSize || 20,
         fontColor: config.buttonStyle?.fontColor || '#ffffff',
         hoverColor: typeof config.buttonStyle?.hoverColor === 'number' ? config.buttonStyle.hoverColor : 0x00aa00

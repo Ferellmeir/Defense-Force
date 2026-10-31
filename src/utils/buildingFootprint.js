@@ -28,5 +28,14 @@ export function getBuildingSprite(building, faction = null) {
     };
     if (laisungSprites[size]) return laisungSprites[size];
   }
+  if (faction === 'Strozek Supremacy') {
+    const strozekSprites = {
+      '2x2': 'strozek_building_2x2',
+      '2x4': 'strozek_building_2x4',
+      '3x3': 'strozek_building_3x3',
+      '3x2': 'strozek_building_3x3',
+    };
+    if (strozekSprites[size]) return strozekSprites[size];
+  }
   return BUILDING_SPRITES[size] || null;
 }

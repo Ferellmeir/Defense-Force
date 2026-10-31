@@ -1,8 +1,13 @@
+import { getBuildingFootprint } from '../utils/buildingFootprint.js';
+
 const key = ({ x, y }) => `${x},${y}`;
 export const CLEAR_TILE_FORCE_COST = 70;
 
 export function isUnclearableTile(map, position) {
   if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return false;
+  if ((map?.buildingTiles || []).some(tile => tile.x === position.x && tile.y === position.y)
+    || (map?.buildings || []).some(building => getBuildingFootprint(building)
+      .some(tile => tile.x === position.x && tile.y === position.y))) return true;
   return (map?.placementRestrictions || []).some(area => position.x >= area.x
     && position.x < area.x + area.width && position.y >= area.y && position.y < area.y + area.height);
 }

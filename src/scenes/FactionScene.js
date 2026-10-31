@@ -7,6 +7,7 @@ import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import ConfirmationDialog from '../helpers/ConfirmationDialog.js';
 import { FACTION_PAGE_BACKGROUNDS, useSceneBackground } from '../utils/screenBackgrounds.js';
 import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
+import { getEquipmentCategoryIcon } from '../systems/equipmentCategoryIcons.js';
 
 const IMPLEMENTED = new Set(Object.keys(FACTION_PAGE_BACKGROUNDS));
 
@@ -140,6 +141,8 @@ export default class FactionScene extends Phaser.Scene {
   }
 
   iconFor(item) {
+    const categoryIcon = getEquipmentCategoryIcon(item);
+    if (categoryIcon) return categoryIcon;
     const type = String(item.damageType || item.statusEffects?.[0]?.type || '').toLowerCase();
     const key = `ui_icon_${type}`;
     return this.textures.exists(key) ? key : item.type === 'augment' ? 'ui_icon_star' : 'ui_icon_physical';

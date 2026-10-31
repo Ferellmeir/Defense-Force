@@ -64,6 +64,41 @@ test('Store stock omits makeshift and unpriced equipment, including explicit nul
   assert.equal(stock.equipment.every(id => id === 'priced'), true);
 });
 
+test('Store stock includes utility equipment alongside weapons in the four equipment slots', () => {
+  const stock = generateStoreStock({
+    equipment: {
+      items: {
+        weapon_a: { id: 'weapon_a', type: 'weapon', rarity: 'COMMON', cost: 10 },
+        weapon_b: { id: 'weapon_b', type: 'weapon', rarity: 'COMMON', cost: 10 },
+        weapon_c: { id: 'weapon_c', type: 'weapon', rarity: 'COMMON', cost: 10 },
+        weapon_d: { id: 'weapon_d', type: 'weapon', rarity: 'COMMON', cost: 10 },
+      },
+      augments: {
+        stimpack: { id: 'stimpack', type: 'utility', rarity: 'COMMON', cost: 10 },
+      },
+    },
+    units: {},
+    random: () => 0,
+  });
+
+  assert.equal(stock.equipment.length, 4);
+  assert.ok(stock.equipment.some(id => id === 'stimpack'));
+});
+
+test('existing saved credit stock upgrades to the utility-inclusive stock version', () => {
+  const manager = createManager();
+  manager.units = {};
+  manager.state.storeState = {
+    creditStock: { equipment: ['weapon_a', 'weapon_b', 'weapon_c', 'weapon_d'], units: [], augments: [] },
+    creditStockVersion: 2,
+  };
+
+  const stock = manager.getCreditStoreStock(() => 0);
+  assert.equal(stock.equipment.length, 4);
+  assert.ok(stock.equipment.some(id => manager.getItemDefinition(id)?.type === 'utility'));
+  assert.equal(manager.state.storeState.creditStockVersion, 3);
+});
+
 test('purchased augments can be installed, affect combat stats, and apply explicit Force costs', () => {
   const manager = createManager();
   manager.units = { UNIT: { id: 'UNIT', cost: 10, baseStats: {

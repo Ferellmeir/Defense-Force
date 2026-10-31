@@ -2,6 +2,7 @@ import { pickItemByRarity } from './missionSettlement.js';
 import { factionDataName } from '../utils/factions.js';
 
 export const CREDIT_STOCK_COUNTS = { equipment: 4, units: 3, augments: 1 };
+export const CREDIT_STOCK_VERSION = 3;
 export const INFLUENCE_STOCK_COUNTS = { equipment: 3, units: 2, augments: 1 };
 
 function pickUnit(units, random) {
@@ -17,7 +18,8 @@ function pickStoreItem(items, random, excludedIds = new Set()) {
 }
 
 export function generateStoreStock({ equipment, units, random = Math.random }) {
-  const availableEquipment = Object.values(equipment.items).filter(item =>
+  const utilityItems = Object.values(equipment.augments).filter(item => item.type === 'utility');
+  const availableEquipment = [...Object.values(equipment.items), ...utilityItems].filter(item =>
     item.rarity !== 'MAKESHIFT' && typeof item.cost === 'number' && Number.isFinite(item.cost)
     && item.cost >= 0 && !item.faction);
   const availableAugments = Object.values(equipment.augments).filter(item =>
@@ -29,7 +31,14 @@ export function generateStoreStock({ equipment, units, random = Math.random }) {
   for (const category of ['equipment', 'augments']) {
     const pool = category === 'equipment' ? availableEquipment : availableAugments;
     const excluded = new Set();
-    for (let index = 0; index < CREDIT_STOCK_COUNTS[category]; index += 1) {
+    if (category === 'equipment') {
+      const utility = pickStoreItem(availableEquipment.filter(item => item.type === 'utility'), random, excluded);
+      if (utility) {
+        stock.equipment.push(utility.id);
+        excluded.add(utility.id);
+      }
+    }
+    for (let index = stock[category].length; index < CREDIT_STOCK_COUNTS[category]; index += 1) {
       const item = pickStoreItem(pool, random, excluded);
       if (item) {
         stock[category].push(item.id);

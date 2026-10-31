@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { fmt } from '../utils/formatNumber.js';
 import { displayFactionName, FACTIONS, getFactionInfluence } from '../utils/factions.js';
 import { rarityFrame, preloadUiAssets } from '../helpers/uiAssets.js';
+import { getEquipmentCategoryIcon } from '../systems/equipmentCategoryIcons.js';
 import RPGManager from '../systems/RPGManager.js';
 import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { FACTION_PAGE_BACKGROUNDS } from '../utils/screenBackgrounds.js';
@@ -149,9 +150,15 @@ export default class MainHubScene extends Phaser.Scene {
 
   getStoreEntries() {
     const stock = this.rpgManager.getCreditStoreStock();
-    const equipment = (stock.equipment || []).map(id => ({ ...this.rpgManager.equipment.items[id], type: 'equipment' })).filter(item => item.id && !item.faction);
+    const equipment = (stock.equipment || []).map(id => {
+      const item = this.rpgManager.getItemDefinition(id);
+      return { ...item, equipmentCategoryType: item?.type, categoryIcon: getEquipmentCategoryIcon(item), type: 'equipment' };
+    }).filter(item => item.id && !item.faction);
     const units = (stock.units || []).map(id => ({ ...this.rpgManager.units[id], type: 'unit' })).filter(item => item.id);
-    const augments = (stock.augments || []).map(id => ({ ...this.rpgManager.equipment.augments[id], type: 'augment' })).filter(item => item.id && !item.faction);
+    const augments = (stock.augments || []).map(id => {
+      const item = this.rpgManager.equipment.augments[id];
+      return { ...item, equipmentCategoryType: item?.type, categoryIcon: getEquipmentCategoryIcon(item), type: 'augment' };
+    }).filter(item => item.id && !item.faction);
     return [...equipment, ...units, ...augments];
   }
 
@@ -179,11 +186,9 @@ export default class MainHubScene extends Phaser.Scene {
       const iconKey = this.getItemIcon(item);
       let icon = null;
       if (this.textures.exists(iconKey)) {
-        if (item.type === 'unit') {
-          const source = this.textures.get(iconKey).getSourceImage();
-          const size = getAspectFitDisplaySize(source.width, source.height, { width: 46, height: 46 });
-          icon = this.add.image(x + 32, y + 46, iconKey).setDisplaySize(size.width, size.height);
-        } else icon = this.add.image(x + 32, y + 46, iconKey).setDisplaySize(30, 34);
+        const source = this.textures.get(iconKey).getSourceImage();
+        const size = getAspectFitDisplaySize(source.width, source.height, { width: 46, height: 46 });
+        icon = this.add.image(x + 32, y + 46, iconKey).setDisplaySize(size.width, size.height);
       }
       const rarity = item.type === 'unit' ? displayFactionName(item.faction) : `${item.rarity || 'Equipment'}`;
       const name = this.add.text(x + 64, y + 12, item.name, {
@@ -220,6 +225,7 @@ export default class MainHubScene extends Phaser.Scene {
 
   getItemIcon(item) {
     if (item.type === 'unit') return `hub_unit_${item.id}`;
+    if (item.categoryIcon) return item.categoryIcon;
     const type = String(item.damageType || item.statusEffects?.[0]?.type || '').toLowerCase();
     if (type && this.textures.exists(`ui_icon_${type}`)) return `ui_icon_${type}`;
     if (item.type === 'augment') return 'ui_icon_star';

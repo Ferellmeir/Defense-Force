@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { fmt } from '../utils/formatNumber.js';
+import { formatStatModifier, formatSignedPercent } from '../utils/statFormatting.js';
 import RPGManager from '../systems/RPGManager.js';
 import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { displayFactionName } from '../utils/factions.js';
@@ -10,6 +11,7 @@ import { getDeploymentEquipmentRows } from '../systems/deploymentEquipmentPanel.
 import { getDeploymentUpgradeOverview } from '../systems/deploymentUpgradeOverview.js';
 import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
 import { getUnitRankProgress } from '../systems/unitRankProgress.js';
+import { getEquipmentCategoryIcon } from '../systems/equipmentCategoryIcons.js';
 
 const GOLD = '#ffe27a';
 const PALE = '#d8e6ef';
@@ -162,7 +164,7 @@ export default class DeploymentScene extends Phaser.Scene {
       const index = rarities.indexOf(this.rarityFilter); this.rarityFilter = rarities[(index + 1) % rarities.length]; this.page = 0; this.drawFilters(); this.drawInventory(); this.updateDetails();
     }, { fontSize: '10px', background: '#28333c' }));
     label('SEARCH', 191);
-    this.searchInput = this.add.dom(110, 465).createFromHTML('<input type="text" placeholder="Search inventory" style="width:178px;background:#142536;color:#fff;border:1px solid #52788e;padding:6px;font-size:12px">');
+    this.searchInput = this.add.dom(110, 465).createFromHTML('<input type="text" placeholder="Search inventory" style="width:178px;background:#142536;color:#fff;border:1px solid #52788e;padding:6px;font-size:12px;font-family:\'Megabot Five\',sans-serif">');
     const inputEl = this.searchInput.node.querySelector('input');
     inputEl.value = this.searchText;
     inputEl.addEventListener('input', event => { this.searchText = event.target.value.toLowerCase(); this.page = 0; this.drawInventory(); this.updateDetails(); });
@@ -228,12 +230,16 @@ export default class DeploymentScene extends Phaser.Scene {
       const selected = this.selection.isSelected(item);
       const card = this.add.rectangle(x + 108, y + 39, 224, 76, 0x192b3a, PANEL_ALPHA).setStrokeStyle(1, selected ? 0xffe27a : 0x34576b);
       this.inventoryGrid.add(card);
-      const icon = item.kind === 'unit' ? `deployment_unit_${item.id}` : `ui_icon_${String(item.damageType || 'physical').toLowerCase()}`;
+      const icon = item.kind === 'unit' ? `deployment_unit_${item.id}` : getEquipmentCategoryIcon(item);
       if (this.textures.exists(icon)) {
         if (item.kind === 'unit') {
           const source = this.textures.get(icon).getSourceImage(); const size = getAspectFitDisplaySize(source.width, source.height, { width: 42, height: 52 });
           this.inventoryGrid.add(this.add.image(x + 25, y + 38, icon).setDisplaySize(size.width, size.height));
-        } else this.inventoryGrid.add(this.add.image(x + 25, y + 38, icon).setDisplaySize(26, 30));
+        } else {
+          const source = this.textures.get(icon).getSourceImage();
+          const size = getAspectFitDisplaySize(source.width, source.height, { width: 34, height: 38 });
+          this.inventoryGrid.add(this.add.image(x + 25, y + 38, icon).setDisplaySize(size.width, size.height));
+        }
       }
       this.inventoryGrid.add(this.add.image(x + 25, y + 38, rarityFrame(item.rarity)).setDisplaySize(47, 58));
       this.inventoryGrid.add(this.add.text(x + 52, y + 10, item.name, { fontSize: '11px', color: '#fff', wordWrap: { width: 162 } }));
@@ -278,7 +284,9 @@ export default class DeploymentScene extends Phaser.Scene {
 
       const icon = this.getEquipmentPanelIcon(row.item);
       if (icon && this.textures.exists(icon)) {
-        this.slotControls.add(this.add.image(80, y + 14, icon).setDisplaySize(20, 20));
+        const source = this.textures.get(icon).getSourceImage();
+        const size = getAspectFitDisplaySize(source.width, source.height, { width: 22, height: 22 });
+        this.slotControls.add(this.add.image(80, y + 14, icon).setDisplaySize(size.width, size.height));
       }
       this.slotControls.add(this.add.text(96, y + 7, row.item?.name || 'Empty', {
         fontSize: '10px', color: row.item ? PALE : MUTED, wordWrap: { width: 140 },
@@ -293,6 +301,8 @@ export default class DeploymentScene extends Phaser.Scene {
 
   getEquipmentPanelIcon(item) {
     if (!item) return null;
+    const categoryIcon = getEquipmentCategoryIcon(item);
+    if (categoryIcon) return categoryIcon;
     if (item.icon && this.textures.exists(item.icon)) return item.icon;
     if (item.asset && this.textures.exists(item.asset)) return item.asset;
     const typeIcon = item.type === 'augment' ? 'ui_icon_star'
@@ -342,10 +352,10 @@ export default class DeploymentScene extends Phaser.Scene {
     const augments = owned.augments || [];
     const base = this.rpgManager.getEffectiveStats(deployment.unitId, { equipped: {}, equipment: { weapons: [], utility: null }, augments: [], veterancy: 0, selectedPaths: {} });
     const final = this.rpgManager.getEffectiveStats(deployment.unitId, { equipped, equipment: this.snapshotEquipment(equipped), augments, veterancy: 0, selectedPaths: {} });
-    const show = value => value === undefined || value === null ? '—' : fmt(value);
+    const show = (key, value) => value === undefined || value === null ? '—' : formatStatModifier(key, value);
     const stats = ['damage', 'range', 'attackSpeedModifier', 'criticalChance', 'criticalModifier', 'reloadSpeed', 'armorPenetration'];
     const statRows = stats.filter(key => base?.[key] !== undefined || final?.[key] !== undefined)
-      .map(key => `${key}: ${show(base?.[key])} base → ${show(final?.[key])} equipped`).join(' · ');
+      .map(key => `${key}: ${show(key, base?.[key])} base → ${show(key, final?.[key])} equipped`).join(' · ');
     const gear = ['left', 'right', 'utility'].map(slot => {
       const item = this.rpgManager.getItemDefinition(equipped[slot]);
       return `${slot}: ${item ? `${item.name}${this.effectSummary(item) ? ` (${this.effectSummary(item)})` : ''}` : 'Empty'}`;
@@ -391,7 +401,7 @@ export default class DeploymentScene extends Phaser.Scene {
   }
 
   effectSummary(item) {
-    const effects = (item.effects || []).map(effect => `${effect.stat} ${effect.mode === 'percent' ? `${effect.value >= 0 ? '+' : ''}${fmt(effect.value * 100)}%` : `${effect.value >= 0 ? '+' : ''}${fmt(effect.value)}`}`);
+    const effects = (item.effects || []).map(effect => `${effect.stat} ${effect.mode === 'percent' ? formatSignedPercent(effect.value) : formatStatModifier(effect.stat, effect.value)}`);
     const special = [item.specialProperty?.property, ...(item.specialProperties || []).map(property => property.property)].filter(Boolean);
     const statuses = (item.statusEffects || []).map(effect => effect.type);
     return [...effects, ...special, ...statuses, item.description].filter(Boolean).join(' · ');

@@ -12,6 +12,7 @@ import unitsConfig from './assets/config/units.json';
 import equipmentConfig from './assets/config/equipment.json';
 import enemiesConfig from './assets/config/enemies.json';
 import { attachSceneDiagnostics, reportPhaserRuntime } from './utils/runtimeDiagnostics.js';
+import { installGameFontDefaults, loadGameFonts } from './utils/gameFonts.js';
 
 // Game configuration
 const config = {
@@ -99,11 +100,21 @@ window.GAME_SETTINGS = {
 };
 
 // Initialize the game after configuration is available to scene preload hooks.
-const game = new Phaser.Game(config);
-window.__towerDefenseGame = game;
-game.events.once(Phaser.Core.Events.READY, () => reportPhaserRuntime(game, 'game-ready'));
-window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-1-second'), 1000);
-window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-5-seconds'), 5000);
+let game = null;
+const startGame = async () => {
+  try {
+    await loadGameFonts(document);
+  } catch (error) {
+    console.error('[fonts] Megabot Five failed to load; using browser fallback fonts.', error);
+  }
+  installGameFontDefaults(Phaser);
+  game = new Phaser.Game(config);
+  window.__towerDefenseGame = game;
+  game.events.once(Phaser.Core.Events.READY, () => reportPhaserRuntime(game, 'game-ready'));
+  window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-1-second'), 1000);
+  window.setTimeout(() => reportPhaserRuntime(game, 'startup-plus-5-seconds'), 5000);
+};
+startGame();
 
 // Temporary read-only browser diagnostic for comparing rendering state between browsers.
 window.inspectFirstLancer = () => {

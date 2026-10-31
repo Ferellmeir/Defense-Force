@@ -24,7 +24,8 @@ import ProjectileManager from '../systems/ProjectileManager.js';
 import RPGManager from '../systems/RPGManager.js';
 import { advanceDynamicMissionMap, clearMissionLocalState, getNextDynamicMapIndex, transitionToMap } from '../systems/missionFlow.js';
 import { getDirectedPathTiles, getPathTileKeys, getProjectedPathArrowRotation } from '../utils/pathTiles.js';
-import { getBuildingDisplaySize } from '../utils/buildingFootprint.js';
+import { getBuildingFootprint } from '../utils/buildingFootprint.js';
+import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 import { getFactionEnvironment } from '../systems/missionEnvironments.js';
 import { useSceneBackground } from '../utils/screenBackgrounds.js';
 import { createBattlefieldProjection } from '../utils/battlefieldProjection.js';
@@ -42,6 +43,63 @@ import {
 // --- UI bar boundaries (keep in sync with UIScene) ---
 const TOP_BAR_HEIGHT = 80;
 const BOTTOM_BAR_HEIGHT = 100;
+const buildingVisibleBoundsCache = new Map();
+const BUILDING_RENDER_TUNING = {
+  laisung: {
+    laisung_building_2x2: { scale: 1.3, originY: 0.84 },
+    laisung_building_2x4: { scale: 1, useVisibleCenter: true },
+    laisung_building_3x3: { scale: 1.2, originY: 0.8 },
+  },
+  strozek: {
+    strozek_building_2x2: { scale: 0.48, originY: 0.81 },
+    strozek_building_2x4: { scale: 0.48, originY: 0.67 },
+    strozek_building_3x3: { scale: 0.48, originY: 0.79 },
+  },
+  underworld: {
+    scenery_building_2x2: { scale: 0.62, originY: 0.82 },
+    scenery_building_2x4: { scale: 0.62, originY: 0.78 },
+    scenery_building_3x3: { scale: 0.62, originY: 0.8 },
+  },
+  shared: {
+    scenery_building_2x2: { scale: 0.72, originY: 0.82 },
+    scenery_building_2x4: { scale: 0.72, originY: 0.78 },
+    scenery_building_3x3: { scale: 0.72, originY: 0.8 },
+  },
+};
+
+function getVisibleImageBounds(key, source) {
+  if (buildingVisibleBoundsCache.has(key)) return buildingVisibleBoundsCache.get(key);
+  const fullBounds = { x: 0, y: 0, width: source.width, height: source.height };
+  let bounds = fullBounds;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(source, 0, 0);
+    const pixels = context.getImageData(0, 0, source.width, source.height).data;
+    let left = source.width;
+    let top = source.height;
+    let right = -1;
+    let bottom = -1;
+    for (let y = 0; y < source.height; y += 1) {
+      for (let x = 0; x < source.width; x += 1) {
+        if (pixels[(y * source.width + x) * 4 + 3] === 0) continue;
+        left = Math.min(left, x);
+        top = Math.min(top, y);
+        right = Math.max(right, x);
+        bottom = Math.max(bottom, y);
+      }
+    }
+    if (right >= left && bottom >= top) {
+      bounds = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+    }
+  } catch {
+    // Keep the full image bounds if this browser cannot read the source pixels.
+  }
+  buildingVisibleBoundsCache.set(key, bounds);
+  return bounds;
+}
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -129,6 +187,19 @@ export default class GameScene extends Phaser.Scene {
     this.load.image('laisung_building_2x2', 'assets/New/Laisung building 2x2.png');
     this.load.image('laisung_building_2x4', 'assets/New/Laisung building 2x4.png');
     this.load.image('laisung_building_3x3', 'assets/New/Laisung building 3x3.png');
+    this.load.image('strozek_background', 'assets/New/Strozek background.jpg');
+    this.load.image('strozek_scenery_cluster', 'assets/New/rfab_image_bg_removed_20261029T204610.png');
+    for (let variation = 1; variation <= 3; variation += 1) {
+      this.load.image(`strozek_ground_tile_${variation}`, `assets/New/tile ${variation} strozek.png`);
+      this.load.image(`strozek_blocked_${variation}`, `assets/New/blocked ${variation} strozek.png`);
+      this.load.image(`strozek_unclearable_${variation}`, `assets/New/unclearable ${variation} strozek.png`);
+    }
+    this.load.image('strozek_path_tile', 'assets/New/path 1 strozek.png');
+    this.load.image('strozek_spawner', 'assets/New/spawner strozek.png');
+    this.load.image('strozek_protected_zone', 'assets/New/protected zone strozek.png');
+    this.load.image('strozek_building_2x2', 'assets/New/building 2x2 strozek.png');
+    this.load.image('strozek_building_2x4', 'assets/New/building 2x4 strozek.png');
+    this.load.image('strozek_building_3x3', 'assets/New/building 3x3 strozek.png');
 
     // Dynamically load tower assets per type and upgrade level
     Object.entries(window.GAME_SETTINGS.UNITS).forEach(([type, data]) => {
@@ -343,24 +414,28 @@ export default class GameScene extends Phaser.Scene {
     const missionEnvironment = getFactionEnvironment(this.registry.get('missionFaction'));
     const backgroundKey = missionEnvironment.backgroundKey;
     const isLaisungMission = missionEnvironment.key === 'laisung';
+    const isStrozekMission = missionEnvironment.key === 'strozek';
     if (backgroundKey !== 'generic_scifi_background') {
-      const background = this.add.image(projection.originX, projection.originY, backgroundKey);
-      const source = this.textures.get(backgroundKey).getSourceImage();
       const fieldWidth = this.scale.width;
       const fieldHeight = Math.max(1, this.scale.height - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
-      const fieldAspect = fieldWidth / fieldHeight;
-      const sourceAspect = source.width / source.height;
-      const cropWidth = sourceAspect > fieldAspect ? source.height * fieldAspect : source.width;
-      const cropHeight = sourceAspect > fieldAspect ? source.height : source.width / fieldAspect;
-      background.setCrop(
-        (source.width - cropWidth) / 2,
-        (source.height - cropHeight) / 2,
-        cropWidth,
-        cropHeight
-      );
-      const coverScale = Math.max(fieldWidth / source.width, fieldHeight / source.height);
-      background.setDisplaySize(source.width * coverScale, source.height * coverScale);
-      background.setDepth(-100);
+      const layerKeys = [backgroundKey, ...(isStrozekMission ? ['strozek_scenery_cluster'] : [])];
+      layerKeys.forEach((textureKey, index) => {
+        const layer = this.add.image(projection.originX, projection.originY, textureKey);
+        const source = this.textures.get(textureKey).getSourceImage();
+        const fieldAspect = fieldWidth / fieldHeight;
+        const sourceAspect = source.width / source.height;
+        const cropWidth = sourceAspect > fieldAspect ? source.height * fieldAspect : source.width;
+        const cropHeight = sourceAspect > fieldAspect ? source.height : source.width / fieldAspect;
+        layer.setCrop(
+          (source.width - cropWidth) / 2,
+          (source.height - cropHeight) / 2,
+          cropWidth,
+          cropHeight
+        );
+        const coverScale = Math.max(fieldWidth / source.width, fieldHeight / source.height);
+        layer.setDisplaySize(source.width * coverScale, source.height * coverScale);
+        layer.setDepth(-100 + index);
+      });
     }
     this.mapLayer = this.add.container(projection.originX, projection.originY);
     // Ground tiles live in an oblique layer; gameplay entities remain outside
@@ -376,6 +451,10 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     });
+    const buildingTiles = Array.isArray(mapData.buildingTiles)
+      ? mapData.buildingTiles
+      : (mapData.buildings || []).flatMap(getBuildingFootprint);
+    const buildingTileKeys = new Set(buildingTiles.map(tile => `${tile.x},${tile.y}`));
     const pathTileKeys = getPathTileKeys(mapData.paths || []);
     this.pathTileKeys = pathTileKeys;
     const clearableKeys = new Set((mapData.blockedClearableTiles || []).map(tile => `${tile.x},${tile.y}`));
@@ -391,13 +470,16 @@ export default class GameScene extends Phaser.Scene {
     // Create background tiles
     for (let y = 0; y < mapHeight; y++) {
       for (let x = 0; x < mapWidth; x++) {
+        if (buildingTileKeys.has(`${x},${y}`)) continue;
         const tileCenter = projection.worldToLayer(
           (x + 0.5) * tileSize,
           (y + 0.5) * tileSize
         );
-        const variation = 1 + ((x * 7 + y * 11) % 8);
+        const variation = 1 + ((x * 7 + y * 11) % (isStrozekMission ? 3 : 8));
         if (!pathTileKeys.has(`${x},${y}`)) {
-          const tile = this.add.image(tileCenter.x, tileCenter.y, isLaisungMission ? 'laisung_ground_tile' : `battlefield_tile_${variation}`);
+          const groundKey = isLaisungMission ? 'laisung_ground_tile'
+            : isStrozekMission ? `strozek_ground_tile_${variation}` : `battlefield_tile_${variation}`;
+          const tile = this.add.image(tileCenter.x, tileCenter.y, groundKey);
           tile.setDisplaySize(renderedTileSize, renderedTileSize);
           this.mapLayer.add(tile);
         }
@@ -431,9 +513,10 @@ export default class GameScene extends Phaser.Scene {
           placementTile.specialType = specialTiles[`${x},${y}`];
           placementTile.isBlockedClearable = clearableKeys.has(`${x},${y}`);
           if (placementTile.isBlockedClearable) {
-            const blocked = this.add.image(tileCenter.x, tileCenter.y, isLaisungMission
+            const blockedKey = isLaisungMission
               ? ((x + y) % 2 ? 'laisung_blocked_1' : 'laisung_blocked_2')
-              : 'blocked_terrain');
+              : isStrozekMission ? `strozek_blocked_${1 + ((x * 7 + y * 11) % 3)}` : 'blocked_terrain';
+            const blocked = this.add.image(tileCenter.x, tileCenter.y, blockedKey);
             blocked.setDisplaySize(tileSize, tileSize);
             blocked.setAlpha(0.9);
             placementTile.blockedOverlay = blocked;
@@ -466,10 +549,12 @@ export default class GameScene extends Phaser.Scene {
     for (const area of mapData.placementRestrictions || []) {
       for (let y = area.y; y < area.y + area.height; y++) {
         for (let x = area.x; x < area.x + area.width; x++) {
+          if (buildingTileKeys.has(`${x},${y}`)) continue;
           const center = projection.worldToLayer((x + 0.5) * tileSize, (y + 0.5) * tileSize);
-          const blocked = this.add.image(center.x, center.y, isLaisungMission
+          const blockedKey = isLaisungMission
             ? ((x + y) % 2 ? 'laisung_unclearable_1' : 'laisung_unclearable_2')
-            : 'blocked_terrain');
+            : isStrozekMission ? `strozek_unclearable_${1 + ((x * 7 + y * 11) % 3)}` : 'blocked_terrain';
+          const blocked = this.add.image(center.x, center.y, blockedKey);
           blocked.setDisplaySize(tileSize, tileSize);
           this.mapLayer.add(blocked);
         }
@@ -484,13 +569,29 @@ export default class GameScene extends Phaser.Scene {
         (buildingData.y + buildingData.height / 2) * tileSize
       );
       const building = this.add.image(center.x, center.y, buildingData.sprite);
-      let displaySize = getBuildingDisplaySize(buildingData, tileSize);
-      if (isLaisungMission) {
-        const source = this.textures.get(buildingData.sprite).getSourceImage();
-        const fit = Math.min(displaySize.width / source.width, displaySize.height / source.height);
-        displaySize = { width: source.width * fit, height: source.height * fit };
-      }
-      building.setDisplaySize(displaySize.width, displaySize.height);
+      const source = this.textures.get(buildingData.sprite).getSourceImage();
+      // Building images are upright screen-space sprites (outside mapLayer).
+      // Fit their visible pixels inside the projected bounds of all occupied
+      // tiles while preserving the source image's aspect ratio.
+      const tilePitch = tileSize * Math.SQRT2 * projection.scale;
+      const footprintBounds = {
+        width: (buildingData.width + buildingData.height) * tilePitch,
+        height: (buildingData.width + buildingData.height) * tilePitch * 0.5,
+      };
+      const visibleBounds = getVisibleImageBounds(buildingData.sprite, source);
+      const fitScale = Math.min(
+        footprintBounds.width * 0.9 / visibleBounds.width,
+        footprintBounds.height * 0.9 / visibleBounds.height
+      );
+      const factionTuning = BUILDING_RENDER_TUNING[missionEnvironment.key] || BUILDING_RENDER_TUNING.shared;
+      const tuning = factionTuning[buildingData.sprite]
+        || BUILDING_RENDER_TUNING.shared[buildingData.sprite]
+        || { scale: 1, useVisibleCenter: true };
+      const renderScale = fitScale * tuning.scale;
+      building.setDisplaySize(source.width * renderScale, source.height * renderScale);
+      const visibleCenterX = (visibleBounds.x + visibleBounds.width / 2) / source.width;
+      const visibleCenterY = (visibleBounds.y + visibleBounds.height / 2) / source.height;
+      building.setOrigin(visibleCenterX, tuning.useVisibleCenter ? visibleCenterY : tuning.originY);
       building.setDepth(center.y);
     }
 
@@ -507,9 +608,24 @@ export default class GameScene extends Phaser.Scene {
         routeTile.nextX - routeTile.x,
         routeTile.nextY - routeTile.y
       );
-      const pathTile = this.add.image(center.x, center.y, isLaisungMission ? 'laisung_path_tile' : 'enemy_path_tile');
+      const pathTile = this.add.image(center.x, center.y, isLaisungMission
+        ? 'laisung_path_tile' : isStrozekMission ? 'strozek_path_tile' : 'enemy_path_tile');
       pathTile.setDisplaySize(renderedTileSize, renderedTileSize).setRotation(directionRotation);
       this.mapLayer.add(pathTile);
+    }
+    if (isStrozekMission) {
+      const endpointMarkers = [
+        { tile: mapData.entryPoints?.[0] || mainPath[0], texture: 'strozek_spawner' },
+        { tile: mapData.exitPoints?.[0] || mainPath.at(-1), texture: 'strozek_protected_zone' },
+      ];
+      endpointMarkers.forEach(({ tile, texture }) => {
+        if (!tile) return;
+        const center = projection.worldToScreen((tile.x + 0.5) * tileSize, (tile.y + 0.5) * tileSize);
+        const marker = this.add.image(center.x, center.y, texture);
+        const source = this.textures.get(texture).getSourceImage();
+        const size = getAspectFitDisplaySize(source.width, source.height, { width: 96, height: 112 });
+        marker.setDisplaySize(size.width, size.height).setOrigin(0.5, 0.9).setDepth(center.y - 1);
+      });
     }
     this.pathManager.setPath(
       mainPath.map((coord) => ({

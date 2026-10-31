@@ -4,6 +4,8 @@ import RPGManager from '../systems/RPGManager.js';
 import { preloadUiAssets, rarityFrame } from '../helpers/uiAssets.js';
 import { displayFactionName } from '../utils/factions.js';
 import { OUT_OF_MISSION_PANEL_ALPHA as PANEL_ALPHA } from '../utils/uiPanelStyles.js';
+import { getEquipmentCategoryIcon } from '../systems/equipmentCategoryIcons.js';
+import { getAspectFitDisplaySize } from '../utils/visualSize.js';
 
 export default class StoreScene extends Phaser.Scene {
   constructor() { super('StoreScene'); }
@@ -54,10 +56,10 @@ export default class StoreScene extends Phaser.Scene {
     this.rows?.forEach(row => row.destroy());
     this.rows = [];
     const stock = this.rpgManager.getCreditStoreStock();
-    const equipment = stock.equipment.map(id => this.rpgManager.equipment.items[id]).filter(Boolean)
-      .map(item => ({ ...item, type: 'equipment', cost: this.rpgManager.getEquipmentCreditCost(item.id) }));
+    const equipment = stock.equipment.map(id => this.rpgManager.getItemDefinition(id)).filter(Boolean)
+      .map(item => ({ ...item, equipmentCategoryType: item.type, categoryIcon: getEquipmentCategoryIcon(item), type: 'equipment', cost: this.rpgManager.getEquipmentCreditCost(item.id) }));
     const augments = stock.augments.map(id => this.rpgManager.equipment.augments[id]).filter(Boolean)
-      .map(item => ({ ...item, type: 'augment', cost: this.rpgManager.getEquipmentCreditCost(item.id) }));
+      .map(item => ({ ...item, equipmentCategoryType: item.type, categoryIcon: getEquipmentCategoryIcon(item), type: 'augment', cost: this.rpgManager.getEquipmentCreditCost(item.id) }));
     const units = stock.units.map(id => this.rpgManager.units[id]).filter(Boolean)
       .map(unit => ({ ...unit, type: 'unit', cost: this.rpgManager.getUnitCreditCost(unit.id) }));
     const entries = [...equipment, ...units, ...augments]
@@ -78,11 +80,16 @@ export default class StoreScene extends Phaser.Scene {
       const condition = (item.statusEffects || []).map(effect => effect.type).find(type =>
         ['acid', 'bleeding', 'poison', 'slowed', 'exposed'].includes(String(type).toLowerCase()));
       const portraitType = String(condition || item.damageType || '').toLowerCase();
-      const portraitKey = ['acid', 'bleeding', 'poison', 'slowed', 'exposed'].includes(portraitType)
+      const portraitKey = item.categoryIcon || (['acid', 'bleeding', 'poison', 'slowed', 'exposed'].includes(portraitType)
         ? `ui_icon_${portraitType}`
         : portraitType === 'physical' ? 'ui_icon_physical'
-          : item.type === 'unit' ? 'ui_icon_star' : null;
-      const portrait = portraitKey ? this.add.image(x + 35, y + 76, portraitKey).setDisplaySize(32, 36) : null;
+          : item.type === 'unit' ? 'ui_icon_star' : null);
+      let portrait = null;
+      if (portraitKey) {
+        const source = this.textures.get(portraitKey).getSourceImage();
+        const size = getAspectFitDisplaySize(source.width, source.height, { width: 40, height: 46 });
+        portrait = this.add.image(x + 35, y + 76, portraitKey).setDisplaySize(size.width, size.height);
+      }
       const name = this.add.text(x + 80, y, `${item.name}  ·  ${item.rarity || 'Unit'}`, { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' });
       const stats = item.type === 'unit'
         ? `Unit  |  ${displayFactionName(item.faction)}  |  ${Object.entries(item.baseStats || {}).slice(0, 4).map(([key, value]) => `${key} ${fmt(value)}`).join(', ')}`

@@ -5,7 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sci-Fi Tower Defense RPG</title>
     <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <link rel="preload" href="assets/fonts/MegabotFive-n8DR.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="assets/fonts/MegabotFiveItalic-zBRl.ttf" as="font" type="font/ttf" crossorigin>
     <style>
+        @font-face {
+            font-family: 'Megabot Five';
+            src: url('assets/fonts/MegabotFive-n8DR.ttf') format('truetype');
+            font-style: normal;
+            font-weight: 400;
+            font-display: block;
+        }
+        @font-face {
+            font-family: 'Megabot Five';
+            src: url('assets/fonts/MegabotFiveItalic-zBRl.ttf') format('truetype');
+            font-style: italic;
+            font-weight: 400;
+            font-display: block;
+        }
         body {
             margin: 0;
             padding: 0;
@@ -15,6 +31,15 @@
             background-size: cover;
             overflow: hidden;
             transition: background-image 0.7s cubic-bezier(0.4,0,0.2,1);
+            font-family: 'Megabot Five', sans-serif;
+            -webkit-text-stroke: 0.5px #000 !important;
+            letter-spacing: 1px !important;
+        }
+        #game-container, #game-container *,
+        #game-container *::before, #game-container *::after,
+        #game-container input::placeholder {
+            -webkit-text-stroke: 0.5px #000 !important;
+            letter-spacing: 1px !important;
         }
         body.in-game-bg {
             background: url('assets/images/forest.png') no-repeat center center fixed;

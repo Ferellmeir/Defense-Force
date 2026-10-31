@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createSeededRandom, generateMissionMap } from '../src/systems/missionGeneration.js';
 import { createMissionBoard } from '../src/systems/missionBoard.js';
@@ -34,12 +35,33 @@ test('mission refreshes preserve each faction environment across all three offer
 test('faction battlefield environments use only present assets and disclose unspecified themes', () => {
   assert.equal(getFactionEnvironment('Laisung Collective').backgroundKey, 'laisung_background');
   assert.equal(getFactionEnvironment('Underworld Network').backgroundKey, 'sewer_rat_battlefield_background');
-  for (const faction of ['Ordo Sanctus', 'Strozek Supremacy']) {
-    const environment = getFactionEnvironment(faction);
-    assert.equal(environment.backgroundKey, 'generic_scifi_background');
-    assert.equal(environment.factionSpecific, false);
-    assert.match(environment.label, /unspecified/i);
-  }
+  assert.equal(getFactionEnvironment('Strozek Supremacy').backgroundKey, 'strozek_background');
+  assert.equal(getFactionEnvironment('Strozek Supremacy').factionSpecific, true);
+  assert.equal(getFactionEnvironment('Ordo Sanctus').backgroundKey, 'generic_scifi_background');
+  assert.equal(getFactionEnvironment('Ordo Sanctus').factionSpecific, false);
+  assert.match(getFactionEnvironment('Ordo Sanctus').label, /unspecified/i);
+});
+
+test('Strozek map art assets exist and are wired to the battlefield renderer', () => {
+  const assets = readdirSync(new URL('../public/assets/New/', import.meta.url));
+  const scene = readFileSync(new URL('../src/scenes/GameScene.js', import.meta.url), 'utf8');
+  const strozekAssets = [
+    'Strozek background.jpg', 'path 1 strozek.png', 'spawner strozek.png',
+    'protected zone strozek.png', 'building 2x2 strozek.png',
+    'building 2x4 strozek.png', 'building 3x3 strozek.png',
+    ...[1, 2, 3].flatMap(index => [
+      `tile ${index} strozek.png`, `blocked ${index} strozek.png`, `unclearable ${index} strozek.png`,
+    ]),
+  ];
+  strozekAssets.forEach(asset => assert.ok(assets.includes(asset), `${asset} should exist`));
+  [
+    'Strozek background.jpg', 'path 1 strozek.png', 'spawner strozek.png',
+    'protected zone strozek.png', 'building 2x2 strozek.png',
+    'building 2x4 strozek.png', 'building 3x3 strozek.png',
+  ].forEach(asset => assert.ok(scene.includes(`assets/New/${asset}`), `${asset} should be loaded`));
+  assert.match(scene, /tile \$\{variation\} strozek\.png/);
+  assert.match(scene, /blocked \$\{variation\} strozek\.png/);
+  assert.match(scene, /unclearable \$\{variation\} strozek\.png/);
 });
 
 test('generated map metadata keeps the selected faction environment', () => {

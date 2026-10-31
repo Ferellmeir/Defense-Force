@@ -1,3 +1,5 @@
+import { EQUIPMENT_CATEGORY_ICON_FILES, EQUIPMENT_CATEGORY_ICONS } from '../systems/equipmentCategoryIcons.js';
+
 const UI_IMAGES = [
   'btn_disabled', 'btn_hover', 'btn_normal', 'btn_pressed',
   'frame_common', 'frame_uncommon', 'frame_rare', 'frame_exotic', 'frame_legendary', 'frame_makeshift',
@@ -10,6 +12,10 @@ export function preloadUiAssets(scene) {
   UI_IMAGES.forEach(key => {
     if (!scene.textures.exists(`ui_${key}`)) scene.load.image(`ui_${key}`, `assets/ui/${key}.png`);
   });
+  Object.entries(EQUIPMENT_CATEGORY_ICON_FILES).forEach(([category, filename]) => {
+    const key = EQUIPMENT_CATEGORY_ICONS[category];
+    if (!scene.textures.exists(key)) scene.load.image(key, `assets/ui/${filename}`);
+  });
 }
 
 export function rarityFrame(rarity) {
@@ -18,3 +24,4 @@ export function rarityFrame(rarity) {
     ? `ui_frame_${key}`
     : 'ui_frame_common';
 }
+

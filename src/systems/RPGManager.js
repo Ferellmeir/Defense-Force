@@ -1,6 +1,6 @@
 import { getProjectileSpeed } from './ProjectileSpeeds.js';
 import { settleMissionState } from './missionSettlement.js';
-import { generateFactionStoreStock, generateStoreStock } from './storeStock.js';
+import { CREDIT_STOCK_VERSION, generateFactionStoreStock, generateStoreStock } from './storeStock.js';
 import { FACTIONS, displayFactionName, factionDataName, getFactionInfluence } from '../utils/factions.js';
 import { createMissionBoard } from './missionBoard.js';
 import { getUnitRankProgress, MAX_UNIT_STARS } from './unitRankProgress.js';
@@ -57,7 +57,7 @@ export default class RPGManager {
       allegiance: null,
       lastAllegiancePayment: null,
       availableMissions: null,
-      storeState: { creditStock: null, creditStockVersion: 2, creditRestocksThisTurn: 0, factionStores: {} },
+      storeState: { creditStock: null, creditStockVersion: CREDIT_STOCK_VERSION, creditRestocksThisTurn: 0, factionStores: {} },
     };
   }
 
@@ -363,7 +363,7 @@ export default class RPGManager {
 
   ensureStoreState() {
     if (!this.state.storeState || typeof this.state.storeState !== 'object') {
-      this.state.storeState = { creditStock: null, creditStockVersion: 2, creditRestocksThisTurn: 0, factionStores: {} };
+      this.state.storeState = { creditStock: null, creditStockVersion: CREDIT_STOCK_VERSION, creditRestocksThisTurn: 0, factionStores: {} };
     }
     this.state.storeState.factionStores ||= {};
     return this.state.storeState;
@@ -371,9 +371,9 @@ export default class RPGManager {
 
   getCreditStoreStock(random = Math.random) {
     const stores = this.ensureStoreState();
-    if (!stores.creditStock || stores.creditStockVersion < 2) {
+    if (!stores.creditStock || stores.creditStockVersion < CREDIT_STOCK_VERSION) {
       stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
-      stores.creditStockVersion = 2;
+      stores.creditStockVersion = CREDIT_STOCK_VERSION;
     }
     this.save();
     return stores.creditStock;
@@ -389,7 +389,7 @@ export default class RPGManager {
     if (!this.spendCredits(cost)) return false;
     const stores = this.ensureStoreState();
     stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
-    stores.creditStockVersion = 2;
+    stores.creditStockVersion = CREDIT_STOCK_VERSION;
     stores.creditRestocksThisTurn += 1;
     this.save();
     return true;
@@ -521,7 +521,7 @@ export default class RPGManager {
     });
     const stores = this.ensureStoreState();
     stores.creditStock = generateStoreStock({ equipment: this.equipment, units: this.units, state: this.state, random });
-    stores.creditStockVersion = 2;
+    stores.creditStockVersion = CREDIT_STOCK_VERSION;
     stores.creditRestocksThisTurn = 0;
     FACTIONS.forEach(faction => {
       const dataFaction = factionDataName(faction);

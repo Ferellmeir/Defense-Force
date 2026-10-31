@@ -15,7 +15,12 @@ export const FACTION_ENVIRONMENTS = {
     backgroundKey: 'laisung_background',
     factionSpecific: true,
   },
-  'Strozek Supremacy': SHARED_SCI_FI_ENVIRONMENT,
+  'Strozek Supremacy': {
+    key: 'strozek',
+    label: 'Strozek battlefield',
+    backgroundKey: 'strozek_background',
+    factionSpecific: true,
+  },
   'Underworld Network': {
     key: 'underworld',
     label: 'Underworld Network battlefield',

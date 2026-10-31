@@ -169,6 +169,12 @@ test('generated building footprints match sprite dimensions and are entirely unc
   }
 });
 
+test('Strozek building footprints use supplied faction structures', () => {
+  assert.equal(getBuildingSprite({ width: 2, height: 2 }, 'Strozek Supremacy'), 'strozek_building_2x2');
+  assert.equal(getBuildingSprite({ width: 2, height: 4 }, 'Strozek Supremacy'), 'strozek_building_2x4');
+  assert.equal(getBuildingSprite({ width: 3, height: 3 }, 'Strozek Supremacy'), 'strozek_building_3x3');
+});
+
 test('building placement favors path-distant footprints while allowing near-path buildings', () => {
   const pathDistance = (map, building) => Math.min(...getBuildingFootprint(building).map(tile =>
     Math.min(...map.paths[0].map(point => Math.abs(point.x - tile.x) + Math.abs(point.y - tile.y)))));

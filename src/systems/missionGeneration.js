@@ -282,6 +282,10 @@ export function validateGeneratedMap(map, difficulty = map?.generation?.difficul
     footprint.forEach(tile => buildingTiles.add(key(tile)));
   }
   if (buildings.length && !map.buildings) return false;
+  if (Array.isArray(map.buildingTiles)) {
+    const tileData = new Set(map.buildingTiles.map(key));
+    if (tileData.size !== buildingTiles.size || [...buildingTiles].some(tile => !tileData.has(tile))) return false;
+  }
   if ([...pathKeys].some(tile => restrictions.has(tile))) return false;
   if (!(map.specialTiles || []).length) return false;
   for (const tile of map.specialTiles) if (!inside(tile) || !isValidSpecialTilePlacement(map, tile, tile.type, tile)) return false;
@@ -351,7 +355,7 @@ function shrinkForBarricade(map, seed, difficulty) {
   const sourceDimensions = { width: map.width, height: map.height };
   const reduced = {
     ...map, width, height, paths: [path], entryPoints: [{ ...path[0] }], exitPoints: [{ ...path.at(-1) }],
-    placementRestrictions: restricted, buildings: [], specialTiles: specials,
+    placementRestrictions: restricted, buildings: [], buildingTiles: [], specialTiles: specials,
     blockedClearableTiles: remaining.slice(0, clearableCount), clearTiles: remaining.slice(clearableCount), terrainModifiers,
     generation: {
       ...map.generation, seed, missionType: 'BARRICADE', sourceDimensions,
@@ -387,8 +391,9 @@ export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts 
     const buildingTemplates = createBuildingTemplates(baseMap, faction);
     const buildings = placeBuildings(buildingTemplates, width, height, path, random, pathKeys);
     if (!buildings) continue;
-    const buildingTiles = new Set(buildings.flatMap(building => getBuildingFootprint(building).map(key)));
-    const occupied = new Set([...pathKeys, ...buildingTiles]);
+    const buildingTileData = buildings.flatMap(building => getBuildingFootprint(building));
+    const buildingTileKeys = new Set(buildingTileData.map(key));
+    const occupied = new Set([...pathKeys, ...buildingTileKeys]);
     const candidates = [];
     for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
       const p = { x, y };
@@ -411,14 +416,14 @@ export function generateMissionMap(baseMap, seed, { difficulty = 1, maxAttempts 
     const all = [];
     for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) if (!reserved.has(`${x},${y}`)) all.push({ x, y });
     all.sort((a, b) => distances(b) - distances(a));
-    const unclearableCount = Math.max(0, Math.round(width * height * 0.4) - buildingTiles.size);
+    const unclearableCount = Math.max(0, Math.round(width * height * 0.4) - buildingTileKeys.size);
     const unclearable = all.splice(0, Math.min(unclearableCount, all.length));
     const restricted = [...footprintRestrictions(buildings), ...unclearable.map(tile => ({ ...tile, width: 1, height: 1 }))];
     const available = all;
     const clearableCount = Math.round(available.length * (0.4 + random() * 0.2));
     const map = {
       ...baseMap, width, height, paths, entryPoints: [{ ...path[0] }], exitPoints: [{ ...path.at(-1) }],
-      placementRestrictions: restricted, buildings, specialTiles: specials,
+      placementRestrictions: restricted, buildings, buildingTiles: buildingTileData, specialTiles: specials,
       blockedClearableTiles: available.slice(0, clearableCount),
       clearTiles: available.slice(clearableCount),
       terrainModifiers: [],

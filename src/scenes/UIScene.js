@@ -8,6 +8,7 @@ import { CLEAR_TILE_FORCE_COST } from '../systems/tileClearing.js';
 import { preloadUiAssets } from '../helpers/uiAssets.js';
 import { displayFactionName } from '../utils/factions.js';
 import { getActiveUnitCombatEffects, getUnitCardCombatProfiles, getUnitCardEquipment, getUnitCardUpgradeColumns } from '../systems/unitCardData.js';
+import { getMissionHudLayout, shouldShowBarricadeTileControls } from '../systems/missionHudLayout.js';
 
 // General dialog style config for confirmation dialogs
 const DIALOG_STYLE = {
@@ -19,7 +20,7 @@ const DIALOG_STYLE = {
   borderThickness: 0,
   borderRadius: 16,
   padding: 32,
-  fontFamily: 'courier',
+  fontFamily: '"Megabot Five", sans-serif',
   fontSize: 17,
   fontColor: '#fffbe7',
   buttonStyle: {
@@ -28,7 +29,7 @@ const DIALOG_STYLE = {
     borderColor: 0xffffff,
     borderThickness: 0,
     borderRadius: 10,
-    fontFamily: 'courier',
+    fontFamily: '"Megabot Five", sans-serif',
     fontSize: 20,
     fontColor: '#fffbe7',
     hoverColor: 0x00aa00 // Lighter green for hover, matches pointerover in wave button
@@ -38,7 +39,7 @@ const DIALOG_STYLE = {
 // Centralized style config for all in-game messages (edit here for global changes)
 const MESSAGE_STYLE = {
   fontSize: '22px',
-  fontFamily: 'courier',
+  fontFamily: '"Megabot Five", sans-serif',
   color: '#fffbe7',
   backgroundColor: 0x000000,
   backgroundAlpha: 0.6,
@@ -416,7 +417,7 @@ export default class UIScene extends Phaser.Scene {
     this.uiContainer = this.add.container(0, 0);
 
     // --- Top bar background ---
-    this.topBarBackground = this.add.rectangle(0, 0, 1280, 80, 0x222222);
+    this.topBarBackground = this.add.rectangle(0, 0, this.scale.width, 80, 0x222222);
     this.topBarBackground.setOrigin(0, 0);
     this.topBarBackground.setAlpha(0.8);
     this.topBarBackground.setDepth(10);
@@ -487,26 +488,27 @@ export default class UIScene extends Phaser.Scene {
   }
 
   createStatusDisplays() {
+    const layout = getMissionHudLayout(this.scale.width);
     // Lives display
-    const livesIcon = this.add.image(30, 40, 'ui_icon_strength').setDisplaySize(26, 26);
+    const livesIcon = this.add.image(layout.status[0], 40, 'ui_icon_strength').setDisplaySize(26, 26);
     this.uiContainer.add(livesIcon);
 
-    this.livesText = this.add.text(52, 27, `Protected Zone: ${fmt(this.lives)}`, {
-      fontSize: '20px',
+    this.livesText = this.add.text(layout.status[0] + 22, 28, `Protected: ${fmt(this.lives)}`, {
+      fontSize: '17px',
       fill: '#ffffff',
     });
     this.uiContainer.add(this.livesText);
 
     // Money display
-    this.uiContainer.add(this.add.image(305, 40, 'ui_icon_force').setDisplaySize(25, 25));
-    this.forceText = this.add.text(330, 28, `Force: ${fmt(this.force)}`, {
-      fontSize: '20px',
+    this.uiContainer.add(this.add.image(layout.status[1], 40, 'ui_icon_force').setDisplaySize(25, 25));
+    this.forceText = this.add.text(layout.status[1] + 25, 28, `Force: ${fmt(this.force)}`, {
+      fontSize: '17px',
       fill: '#7de8ff',
     });
     this.uiContainer.add(this.forceText);
 
     // Wave display
-    const waveIcon = this.add.image(505, 40, 'ui_icon_wave').setDisplaySize(26, 26);
+    const waveIcon = this.add.image(layout.status[2], 40, 'ui_icon_wave').setDisplaySize(26, 26);
     this.uiContainer.add(waveIcon);
 
     // Get total waves from WaveManager if available, otherwise use base waves
@@ -514,8 +516,8 @@ export default class UIScene extends Phaser.Scene {
       ? this.scene.get('GameScene').waveManager.getTotalWaves()
       : (window.GAME_SETTINGS.MISSION_WAVES?.waveCount ?? '?');
 
-    this.waveText = this.add.text(530, 28, `Wave ${fmt(this.wave)} / ${fmt(totalWaves)}`, {
-      fontSize: '20px',
+    this.waveText = this.add.text(layout.status[2] + 25, 28, `Wave ${fmt(this.wave)} / ${fmt(totalWaves)}`, {
+      fontSize: '17px',
       fill: '#ffffff',
     });
     this.uiContainer.add(this.waveText);
@@ -546,15 +548,15 @@ export default class UIScene extends Phaser.Scene {
         difficultyColor = '#ffffff';
     }
 
-    const difficultyIcon = this.add.image(705, 40, 'ui_icon_difficulty').setDisplaySize(25, 25);
+    const difficultyIcon = this.add.image(layout.status[3], 40, 'ui_icon_difficulty').setDisplaySize(25, 25);
     this.uiContainer.add(difficultyIcon);
 
     this.difficultyText = this.add.text(
-      730,
-      28,
-      `Difficulty: ${difficultyData.name}`,
+      layout.status[3] + 25,
+      29,
+      difficultyData.name,
       {
-        fontSize: '18px',
+        fontSize: '16px',
         fill: difficultyColor,
       }
     );
@@ -689,16 +691,21 @@ export default class UIScene extends Phaser.Scene {
 
   createSpecialTileControls() {
     const gameScene = this.scene.get('GameScene');
-    this.specialTileTypeButton = this.add.rectangle(818, 54, 216, 24, 0x1b3548, 0.96)
+    this.specialTileControls = this.add.container(20, 88).setDepth(20);
+    this.specialTileControlsBackground = this.add.rectangle(0, 0, 395, 34, 0x101923, 0.88)
+      .setOrigin(0).setStrokeStyle(1, 0x36566a);
+    this.specialTileTypeButton = this.add.rectangle(8, 5, 208, 24, 0x1b3548, 0.96)
       .setStrokeStyle(1, 0x58c6dd).setInteractive({ useHandCursor: true });
-    this.specialTileTypeText = this.add.text(826, 57, '', { fontSize: '12px', color: '#e5f8ff' });
-    this.specialTilePlacementButton = this.add.rectangle(1042, 54, 177, 24, 0x25465a, 0.96)
+    this.specialTileTypeText = this.add.text(16, 8, '', { fontSize: '12px', color: '#e5f8ff' });
+    this.specialTilePlacementButton = this.add.rectangle(224, 5, 163, 24, 0x25465a, 0.96)
       .setStrokeStyle(1, 0x58c6dd).setInteractive({ useHandCursor: true });
-    this.specialTilePlacementText = this.add.text(1054, 57, '', { fontSize: '12px', color: '#e5f8ff' });
-    this.uiContainer.add([
+    this.specialTilePlacementText = this.add.text(232, 8, '', { fontSize: '12px', color: '#e5f8ff' });
+    this.specialTileControls.add([
+      this.specialTileControlsBackground,
       this.specialTileTypeButton, this.specialTileTypeText,
       this.specialTilePlacementButton, this.specialTilePlacementText,
     ]);
+    this.uiContainer.add(this.specialTileControls);
     this.specialTileTypeButton.on('pointerdown', () => gameScene.cycleSpecialTileType());
     this.specialTilePlacementButton.on('pointerdown', () => {
       gameScene.setSpecialTilePlacementMode(!gameScene.specialTilePlacementMode);
@@ -710,9 +717,14 @@ export default class UIScene extends Phaser.Scene {
     const gameScene = this.scene.get('GameScene');
     if (!this.specialTileTypeText || !gameScene) return;
     const state = gameScene.getSpecialTileState();
+    const mission = gameScene.selectedMission || gameScene.registry?.get('selectedMission');
+    const visible = shouldShowBarricadeTileControls(mission?.missionType, state.points)
+      && !gameScene.isGameOver;
+    this.specialTileControls.setVisible(visible);
+    if (!visible) return;
     const title = String(state.type || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
-    this.specialTileTypeText.setText(`Tile: ${title}  |  ${fmt(state.points)} pts`);
-    this.specialTilePlacementText.setText(state.placementMode ? 'Place tile: ON' : 'Place tile: OFF');
+    this.specialTileTypeText.setText(`Tile: ${title}  |  ${fmt(state.points)} left`);
+    this.specialTilePlacementText.setText(`${state.placementMode ? 'Place: ON' : 'Place: OFF'} · Left: ${fmt(state.points)}`);
     this.specialTilePlacementButton.setFillStyle(state.placementMode ? 0x287348 : 0x25465a);
     if (state.points > 0 && !gameScene.isGameOver) this.specialTilePlacementButton.setInteractive({ useHandCursor: true });
     else this.specialTilePlacementButton.disableInteractive();
@@ -746,7 +758,7 @@ export default class UIScene extends Phaser.Scene {
       'Start Wave 1',
       {
         fontSize: '20px', 
-        fontFamily: 'courier', 
+        fontFamily: '"Megabot Five", sans-serif', 
         fontStyle: 'normal',
         fill: '#fffbe7', 
         align: 'center',
@@ -964,20 +976,20 @@ export default class UIScene extends Phaser.Scene {
     const panel = this.add.rectangle(centerX, centerY, 430, 230, 0x101923, 0.99)
       .setStrokeStyle(2, 0x54d9e8, 1);
     const question = this.add.text(centerX, centerY - 62, 'Clear this tile?', {
-      fontFamily: 'courier', fontSize: '24px', color: '#e9f4fb', fontStyle: 'bold',
+      fontFamily: '"Megabot Five", sans-serif', fontSize: '24px', color: '#e9f4fb', fontStyle: 'bold',
     }).setOrigin(0.5);
     const cost = this.add.text(centerX, centerY - 18, `Cost: ${CLEAR_TILE_FORCE_COST} Force`, {
-      fontFamily: 'courier', fontSize: '20px', color: '#ffd36a',
+      fontFamily: '"Megabot Five", sans-serif', fontSize: '20px', color: '#ffd36a',
     }).setOrigin(0.5);
     const confirmButton = this.add.rectangle(centerX - 95, centerY + 60, 150, 48, 0x187044, 1)
       .setStrokeStyle(1, 0x75f0a7, 1).setInteractive({ useHandCursor: true });
     const confirmText = this.add.text(centerX - 95, centerY + 60, 'Clear', {
-      fontFamily: 'courier', fontSize: '19px', color: '#ffffff', fontStyle: 'bold',
+      fontFamily: '"Megabot Five", sans-serif', fontSize: '19px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
     const cancelButton = this.add.rectangle(centerX + 95, centerY + 60, 150, 48, 0x344454, 1)
       .setStrokeStyle(1, 0x90a9bc, 1).setInteractive({ useHandCursor: true });
     const cancelText = this.add.text(centerX + 95, centerY + 60, 'Cancel', {
-      fontFamily: 'courier', fontSize: '19px', color: '#ffffff', fontStyle: 'bold',
+      fontFamily: '"Megabot Five", sans-serif', fontSize: '19px', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
     dialog.add([shade, panel, question, cost, confirmButton, confirmText, cancelButton, cancelText]);
     this.tileClearConfirmCallbacks = { onConfirm, onCancel };
@@ -1231,6 +1243,7 @@ export default class UIScene extends Phaser.Scene {
 
   onGameOver(data) {
     this.isGameStopped = true;
+    this.updateSpecialTileControls();
     this.specialTileTypeButton?.disableInteractive();
     this.specialTilePlacementButton?.disableInteractive();
     this.hideTowerInfo();
@@ -1346,15 +1359,15 @@ export default class UIScene extends Phaser.Scene {
 
     // Button spacing
     const buttonSize = 40;
-    const buttonPadding = 10;
-    const startX = 1280 - buttonSize - 10;
+    const layout = getMissionHudLayout(this.scale.width);
+    const startX = layout.mute;
     const buttonY = 30; // Move buttons down slightly
     
     // Create top-right buttons container with higher depth
     this.topRightButtonsContainer.setDepth(100); // Ensure buttons appear above other UI elements
 
     const gameScene = this.scene.get('GameScene');
-    this.pauseControl = this.add.text(875, 28, 'PAUSE', { fontSize: '16px', fill: '#ffffff', backgroundColor: '#27445c', padding: 8 }).setInteractive();
+    this.pauseControl = this.add.text(layout.pause, 28, 'PAUSE', { fontSize: '16px', fill: '#ffffff', backgroundColor: '#27445c', padding: 8 }).setInteractive();
     if (gameScene.selectedMission?.missionType === 'GAUNTLET') this.pauseControl.disableInteractive().setVisible(false);
     this.pauseControl.on('pointerdown', () => {
       gameScene.isPaused = !gameScene.isPaused;
@@ -1363,7 +1376,7 @@ export default class UIScene extends Phaser.Scene {
       gameScene.events.emit('gamePaused', gameScene.isPaused);
     });
     this.speedControls = [1, 2, 3, 4].map((speed, index) => {
-      const control = this.add.text(945 + index * 42, 28, `${fmt(speed)}×`, {
+      const control = this.add.text(layout.speedStart + index * layout.speedStep, 28, `${fmt(speed)}×`, {
         fontSize: '16px',
         fill: '#ffffff',
         backgroundColor: gameScene.gameSpeed === speed ? '#32799c' : '#27445c',
@@ -1403,7 +1416,7 @@ export default class UIScene extends Phaser.Scene {
     this.topRightButtonsContainer.add(this.muteButton.container);
 
     // Create main menu button
-    this.mainMenuButton = new UIButton(this, startX - 2 * (buttonSize + buttonPadding), buttonY, {
+    this.mainMenuButton = new UIButton(this, layout.menu, buttonY, {
       image: 'ui_mainmenu',
       tooltip: 'Return Home',
       width: buttonSize,

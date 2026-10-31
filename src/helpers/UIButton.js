@@ -73,7 +73,7 @@ export default class UIButton {
     // Move tooltip up by 20px from the previous y position
     const tooltipY = 35;
     this.tooltipText = scene.add.text(0, tooltipY, this.config.tooltip, {
-      fontFamily: 'courier',
+      fontFamily: '"Megabot Five", sans-serif',
       fontSize: '14px',
       fill: '#fffbe7' // match dialog font color
     });
